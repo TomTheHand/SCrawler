@@ -200,20 +200,23 @@ Namespace API.Mastodon
                 End If
             End If
         End Sub
+        Private Function LookupAcctUrl() As String
+            Dim url$ = $"https://{MyCredentials.Domain}/api/v1/accounts/lookup?acct="
+            If Not UserDomain.IsEmptyString Then
+                If UserDomain = MyCredentials.Domain Then
+                    url &= $"@{NameTrue}"
+                Else
+                    url &= $"@{NameTrue}@{UserDomain}"
+                End If
+            Else
+                url &= $"@{NameTrue}"
+            End If
+            Return url
+        End Function
         Private Sub ObtainUserID()
             Try
                 If ID.IsEmptyString Then
-                    Dim url$ = $"https://{MyCredentials.Domain}/api/v1/accounts/lookup?acct="
-                    If Not UserDomain.IsEmptyString Then
-                        If UserDomain = MyCredentials.Domain Then
-                            url &= $"@{NameTrue}"
-                        Else
-                            url &= $"@{NameTrue}@{UserDomain}"
-                        End If
-                    Else
-                        url &= $"@{NameTrue}"
-                    End If
-                    Dim r$ = Responser.GetResponse(url)
+                    Dim r$ = Responser.GetResponse(LookupAcctUrl())
                     If Not r.IsEmptyString Then
                         Using j As EContainer = JsonDocument.Parse(r)
                             If Not j Is Nothing Then ID = j.Value("id")
@@ -231,6 +234,39 @@ Namespace API.Mastodon
             Dim rList As New List(Of Integer)
             Dim URL$ = String.Empty
             Try
+                ' "Download missing posts" (DownloadMissingOnly) skips DownloadDataF entirely
+                ' (see UserDataBase.DownloadData), so the request that would normally detect a
+                ' 404'd/suspended account and set UserExists=False (via DownloadingException)
+                ' never runs — UserExists is left at the EnvirReset default of True. Spend one
+                ' cheap account-lookup request up front, with the same default error handling
+                ' as a normal request, so a 404/403 here sets UserExists=False the same way.
+                If DownloadMissingOnly Then
+                    ResetCredentials()
+                    Try
+                        Responser.GetResponse(LookupAcctUrl())
+                    Catch ex As Exception
+                        ProcessException(ex, Token, $"existence check error [{ToStringForLog()}]")
+                    End Try
+                End If
+                If Not UserExists Then
+                    ' Account no longer exists — none of its still-Missing posts can ever become
+                    ' recoverable. Give up on all of them now instead of re-fetching each one.
+                    If ContentMissingExists Then
+                        Dim missingCount% = 0
+                        For ci% = 0 To _ContentList.Count - 1
+                            If _ContentList(ci).State = UStates.Missing Then
+                                rList.Add(ci)
+                                missingCount += 1
+                            End If
+                        Next
+                        If missingCount > 0 Then
+                            MyMainLOG = $"{ToStringForLog()}: ReparseMissing — account no longer exists; " &
+                                        $"removing {missingCount} missing item(s) from missing list."
+                            _ForceSaveUserData = True
+                        End If
+                    End If
+                    Exit Sub
+                End If
                 If ContentMissingExists Then
                     Dim SinglePostUrl$ = GetSinglePostPattern(MyCredentials.Domain)
                     Dim m As UserMedia

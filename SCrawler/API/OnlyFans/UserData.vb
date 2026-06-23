@@ -511,6 +511,39 @@ Namespace API.OnlyFans
             Dim rList As New List(Of Integer)
             Dim URL$ = String.Empty
             Try
+                ' "Download missing posts" (DownloadMissingOnly) skips DownloadDataF entirely
+                ' (see UserDataBase.DownloadData), so the request that would normally detect a
+                ' 404'd account and set UserExists=False (via DownloadingException) never runs —
+                ' UserExists is left at the EnvirReset default of True. Spend one cheap user-info
+                ' request up front (GetUserID, with the same default error handling DownloadDataF
+                ' itself uses), replicating DownloadDataF's cookie-header setup, so a 404 here
+                ' sets UserExists=False the same way.
+                If DownloadMissingOnly And Not IsSavedPosts Then
+                    Dim cc As CookieKeeper = Responser.Cookies.Copy
+                    Responser.Cookies.Clear()
+                    Responser.Headers.Add("Cookie", cc.ToString(False))
+                    GetUserID(Not ID.IsEmptyString)
+                    cc.Dispose()
+                End If
+                If Not UserExists Then
+                    ' Account no longer exists — none of its still-Missing posts can ever become
+                    ' recoverable. Give up on all of them now instead of re-fetching each one.
+                    If ContentMissingExists Then
+                        Dim missingCount% = 0
+                        For ci% = 0 To _ContentList.Count - 1
+                            If _ContentList(ci).State = UStates.Missing Then
+                                rList.Add(ci)
+                                missingCount += 1
+                            End If
+                        Next
+                        If missingCount > 0 Then
+                            MyMainLOG = $"{ToStringForLog()}: ReparseMissing — account no longer exists; " &
+                                        $"removing {missingCount} missing item(s) from missing list."
+                            _ForceSaveUserData = True
+                        End If
+                    End If
+                    Exit Sub
+                End If
                 If ContentMissingExists Then
                     Dim m As UserMedia
                     Dim stateRefill As Func(Of UserMedia, Integer, UserMedia) = Function(ByVal input As UserMedia, ByVal ii As Integer) As UserMedia

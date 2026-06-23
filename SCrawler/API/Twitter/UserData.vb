@@ -1189,6 +1189,26 @@ nextpIndx:
             Dim URL$ = String.Empty
             Dim cache As CacheKeeper = Nothing
             Try
+                If Not UserExists Then
+                    ' Account no longer exists — none of its still-Missing posts can ever become
+                    ' recoverable via gallery-dl. Give up on all of them now instead of spawning
+                    ' gallery-dl per item for an account we already know is gone.
+                    If ContentMissingExists And Not _ReparseLikes Then
+                        Dim missingCount% = 0
+                        For ci% = 0 To _ContentList.Count - 1
+                            If _ContentList(ci).State = UStates.Missing Then
+                                rList.Add(ci)
+                                missingCount += 1
+                            End If
+                        Next
+                        If missingCount > 0 Then
+                            MyMainLOG = $"{ToStringForLog()}: ReparseMissing — account no longer exists; " &
+                                        $"removing {missingCount} missing item(s) from missing list."
+                            _ForceSaveUserData = True
+                        End If
+                    End If
+                    Exit Sub
+                End If
                 If ContentMissingExists Or (_ReparseLikes And LikesPosts.Count > 0) Then
                     Const __entries$ = "entries"
                     Dim m As UserMedia, mTmp As UserMedia

@@ -437,6 +437,25 @@ Namespace API.ThreadsNet
             DefaultParser_ElemNode = Nothing
             DefaultParser_IgnorePass = True
             Try
+                If Not UserExists Then
+                    ' Account no longer exists — none of its still-Missing posts can ever become
+                    ' recoverable. Give up on all of them now instead of re-fetching each one.
+                    If ContentMissingExists Then
+                        Dim missingCount% = 0
+                        For ci% = 0 To _ContentList.Count - 1
+                            If _ContentList(ci).State = UserMedia.States.Missing Then
+                                rList.Add(ci)
+                                missingCount += 1
+                            End If
+                        Next
+                        If missingCount > 0 Then
+                            MyMainLOG = $"{ToStringForLog()}: ReparseMissing — account no longer exists; " &
+                                        $"removing {missingCount} missing item(s) from missing list."
+                            _ForceSaveUserData = True
+                        End If
+                    End If
+                    Exit Sub
+                End If
                 If ContentMissingExists Then
                     Responser.Method = "POST"
                     Responser.ContentType = "application/x-www-form-urlencoded"
@@ -478,8 +497,29 @@ Namespace API.ThreadsNet
                                     End If
                                 End If
                             Next
+                            ' ProcessJsonErrorException above sets UserExists=False (without throwing)
+                            ' when the GraphQL error for this item is exactly "not found" — which
+                            ' for "Download missing posts" (DownloadMissingOnly) mode is the only
+                            ' signal that the ACCOUNT itself is gone (DownloadDataF, which would
+                            ' normally catch this earlier, is skipped in that mode). Stop here
+                            ' instead of repeating the same doomed request for every other Missing item.
+                            If Not UserExists Then Exit For
                         End If
                     Next
+                    If Not UserExists And ContentMissingExists Then
+                        Dim missingCount% = 0
+                        For ci% = 0 To _ContentList.Count - 1
+                            If _ContentList(ci).State = UserMedia.States.Missing And Not rList.Contains(ci) Then
+                                rList.Add(ci)
+                                missingCount += 1
+                            End If
+                        Next
+                        If missingCount > 0 Then
+                            MyMainLOG = $"{ToStringForLog()}: ReparseMissing — account no longer exists; " &
+                                        $"removing {missingCount} missing item(s) from missing list."
+                            _ForceSaveUserData = True
+                        End If
+                    End If
                 End If
             Catch eex As ExitException
                 Throw eex
