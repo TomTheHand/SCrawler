@@ -2006,7 +2006,7 @@ ResumeDownloadingOperation:
         UserListUpdate(User, False)
     End Sub
     Private Sub Downloader_UpdateJobsCount(ByVal TotalCount As Integer)
-        ControlInvokeFast(Toolbar_BOTTOM, LBL_JOBS_COUNT, Sub() LBL_JOBS_COUNT.Text = IIf(TotalCount = 0, String.Empty, $"[Jobs {TotalCount}]"))
+        ControlInvokeFast(Toolbar_BOTTOM, LBL_JOBS_COUNT, Sub() LBL_JOBS_COUNT.Text = IIf(TotalCount = 0, String.Empty, $"[{TotalCount} left]"))
     End Sub
     Private Sub Downloader_Downloading(ByVal Value As Boolean)
         Dim __isDownloading As Boolean = Value Or Downloader.Working(False)
