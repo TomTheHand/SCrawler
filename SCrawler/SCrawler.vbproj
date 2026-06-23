@@ -531,6 +531,7 @@
     <Compile Include="PluginsEnvironment\Hosts\PluginHost.vb" />
     <Compile Include="PluginsEnvironment\Hosts\SettingsHost.vb" />
     <Compile Include="SettingsCLS.vb" />
+    <Compile Include="Download\NetworkBreaker.vb" />
     <Compile Include="Download\TDownloader.vb" />
     <Compile Include="SiteResources.Designer.vb">
       <AutoGen>True</AutoGen>
@@ -717,18 +718,15 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\MyUtilities\PersonalUtilities.Images\PersonalUtilities.Images.vbproj">
-      <Project>{b7ef76a9-96f3-4c53-b252-0ab5f79b67b3}</Project>
-      <Name>PersonalUtilities.Images</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\MyUtilities\PersonalUtilities.Notifications\PersonalUtilities.Notifications.vbproj">
-      <Project>{fc532253-1ab3-4def-a28a-dfdd9a481eb2}</Project>
-      <Name>PersonalUtilities.Notifications</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\MyUtilities\PersonalUtilities\PersonalUtilities.vbproj">
-      <Project>{8405896b-2685-4916-bc93-1fb514c323a9}</Project>
-      <Name>PersonalUtilities</Name>
-    </ProjectReference>
+    <Reference Include="PersonalUtilities.Images">
+      <HintPath>..\lib\PersonalUtilities.Images.dll</HintPath>
+    </Reference>
+    <Reference Include="PersonalUtilities.Notifications">
+      <HintPath>..\lib\PersonalUtilities.Notifications.dll</HintPath>
+    </Reference>
+    <Reference Include="PersonalUtilities">
+      <HintPath>..\lib\PersonalUtilities.dll</HintPath>
+    </Reference>
     <ProjectReference Include="..\SCrawler.PluginProvider\SCrawler.PluginProvider.vbproj">
       <Project>{d4650f6b-5a54-44b6-999b-6c675b7116b1}</Project>
       <Name>SCrawler.PluginProvider</Name>

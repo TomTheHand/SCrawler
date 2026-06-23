@@ -160,10 +160,9 @@
     <Content Include="Content\Icons\RainbowIcon_48.ico" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\MyUtilities\PersonalUtilities\PersonalUtilities.vbproj">
-      <Project>{8405896b-2685-4916-bc93-1fb514c323a9}</Project>
-      <Name>PersonalUtilities</Name>
-    </ProjectReference>
+    <Reference Include="PersonalUtilities">
+      <HintPath>..\lib\PersonalUtilities.dll</HintPath>
+    </Reference>
     <ProjectReference Include="..\SCrawler.Shared\SCrawler.Shared.vbproj">
       <Project>{dc634700-24c7-42dd-bf8f-87e6cc54e625}</Project>
       <Name>SCrawler.Shared</Name>

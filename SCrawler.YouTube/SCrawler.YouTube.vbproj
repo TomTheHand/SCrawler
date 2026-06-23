@@ -310,14 +310,12 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\MyUtilities\PersonalUtilities.Notifications\PersonalUtilities.Notifications.vbproj">
-      <Project>{fc532253-1ab3-4def-a28a-dfdd9a481eb2}</Project>
-      <Name>PersonalUtilities.Notifications</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\MyUtilities\PersonalUtilities\PersonalUtilities.vbproj">
-      <Project>{8405896b-2685-4916-bc93-1fb514c323a9}</Project>
-      <Name>PersonalUtilities</Name>
-    </ProjectReference>
+    <Reference Include="PersonalUtilities.Notifications">
+      <HintPath>..\lib\PersonalUtilities.Notifications.dll</HintPath>
+    </Reference>
+    <Reference Include="PersonalUtilities">
+      <HintPath>..\lib\PersonalUtilities.dll</HintPath>
+    </Reference>
     <ProjectReference Include="..\SCrawler.PluginProvider\SCrawler.PluginProvider.vbproj">
       <Project>{d4650f6b-5a54-44b6-999b-6c675b7116b1}</Project>
       <Name>SCrawler.PluginProvider</Name>

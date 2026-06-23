@@ -147,10 +147,9 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\MyUtilities\PersonalUtilities\PersonalUtilities.vbproj">
-      <Project>{8405896b-2685-4916-bc93-1fb514c323a9}</Project>
-      <Name>PersonalUtilities</Name>
-    </ProjectReference>
+    <Reference Include="PersonalUtilities">
+      <HintPath>..\lib\PersonalUtilities.dll</HintPath>
+    </Reference>
     <ProjectReference Include="..\SCrawler.PluginProvider\SCrawler.PluginProvider.vbproj">
       <Project>{d4650f6b-5a54-44b6-999b-6c675b7116b1}</Project>
       <Name>SCrawler.PluginProvider</Name>

@@ -143,10 +143,9 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\MyUtilities\PersonalUtilities\PersonalUtilities.vbproj">
-      <Project>{8405896b-2685-4916-bc93-1fb514c323a9}</Project>
-      <Name>PersonalUtilities</Name>
-    </ProjectReference>
+    <Reference Include="PersonalUtilities">
+      <HintPath>..\lib\PersonalUtilities.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Content Include="Content\Icons\FilterIcon.ico" />

@@ -8,8 +8,6 @@ Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "SCrawler", "SCrawler\SCrawl
 		{71263EEE-E25F-44DD-B0A9-F09047C0BEEA} = {71263EEE-E25F-44DD-B0A9-F09047C0BEEA}
 	EndProjectSection
 EndProject
-Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "PersonalUtilities", "..\..\MyUtilities\PersonalUtilities\PersonalUtilities.vbproj", "{8405896B-2685-4916-BC93-1FB514C323A9}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{FE5CE5B9-DDBE-4399-A17C-880893635307}"
 	ProjectSection(SolutionItems) = preProject
 		.gitignore = .gitignore
@@ -19,8 +17,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "SCrawler.PluginProvider", "SCrawler.PluginProvider\SCrawler.PluginProvider.vbproj", "{D4650F6B-5A54-44B6-999B-6C675B7116B1}"
 EndProject
-Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "PersonalUtilities.Notifications", "..\..\MyUtilities\PersonalUtilities.Notifications\PersonalUtilities.Notifications.vbproj", "{FC532253-1AB3-4DEF-A28A-DFDD9A481EB2}"
-EndProject
 Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "SCrawler.YouTube", "SCrawler.YouTube\SCrawler.YouTube.vbproj", "{7C764707-7FD1-469C-A365-94605C193607}"
 EndProject
 Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "SCrawler.YouTubeDownloader", "SCrawler.YouTubeDownloader\SCrawler.YouTubeDownloader.vbproj", "{3F2F2C29-4ADB-48B5-A66E-EE0F51D0DCEF}"
@@ -28,8 +24,6 @@ EndProject
 Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "SCrawler.Updater", "SCrawler.Updater\SCrawler.Updater.vbproj", "{71263EEE-E25F-44DD-B0A9-F09047C0BEEA}"
 EndProject
 Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "SCrawler.Shared", "SCrawler.Shared\SCrawler.Shared.vbproj", "{DC634700-24C7-42DD-BF8F-87E6CC54E625}"
-EndProject
-Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "PersonalUtilities.Images", "..\..\MyUtilities\PersonalUtilities.Images\PersonalUtilities.Images.vbproj", "{B7EF76A9-96F3-4C53-B252-0AB5F79B67B3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

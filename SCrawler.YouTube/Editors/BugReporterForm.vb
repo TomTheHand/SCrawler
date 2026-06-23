@@ -16,7 +16,7 @@ Imports PersonalUtilities.Functions.Messaging
 Imports BStyle = PersonalUtilities.Bots.IBot.Styles
 Imports ADB = PersonalUtilities.Forms.Controls.Base.ActionButton.DefaultButtons
 Namespace Editors
-    Public Class BugReporterForm
+    Public Partial Class BugReporterForm
 #Region "Declarations"
         Private Const MsgTitle As String = "Bug report"
         Private ReadOnly MyView As FormView
