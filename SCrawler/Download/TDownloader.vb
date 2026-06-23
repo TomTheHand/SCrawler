@@ -430,7 +430,17 @@ Namespace DownloadObjects
                                 h.DownloadDone(Type)
                                 Hosts.RemoveAt(i)
                                 Keys.RemoveAt(i)
-                                If Items.Count > 0 Then Items.RemoveAll(Function(u) DirectCast(u, UserDataBase).HOST.Key = k)
+                                If Items.Count > 0 Then
+                                    ' Log before removing so the user can see why a service was skipped.
+                                    ' Without this, a whole service (e.g. Instagram, Reddit) disappears
+                                    ' from the run silently when credentials expire or the site is down.
+                                    Dim removedCount% = (From u As UserDataBase In Items Where u.HOST.Key = k).Count
+                                    If removedCount > 0 Then
+                                        MyMainLOG = $"{h.Name} not available — {removedCount} user(s) removed from this run." &
+                                                    " Check credentials in site settings."
+                                    End If
+                                    Items.RemoveAll(Function(u) DirectCast(u, UserDataBase).HOST.Key = k)
+                                End If
                             ElseIf h.CountUnavailable > 0 AndAlso Items.Count > 0 Then
                                 Items.RemoveAll(Function(u) DirectCast(u, UserDataBase).HOST.Key = k And Not h.AvailablePartial(u.AccountName))
                             End If
@@ -616,6 +626,7 @@ Namespace DownloadObjects
                 _Job.Progress.Maximum = 0
                 _Job.Progress.Value = 0
                 _Job.Progress.Visible = True
+                NetworkBreaker.ResetSilent()
                 Dim SiteChecked As Boolean = False
                 Do While _Job.Count > 0
                     _Job.ThrowIfCancellationRequested()
@@ -623,6 +634,16 @@ Namespace DownloadObjects
                     UpdateJobsLabel()
                     DownloadData(_Job, _Job.Token)
                     _Job.ThrowIfCancellationRequested()
+                    ' If enough DNS failures were recorded during the batch, the circuit
+                    ' breaker has tripped. Block here and wait for connectivity to return.
+                    ' WaitForConnectivity probes every 30s for up to 15 min, then gives up.
+                    If NetworkBreaker.IsTripped Then
+                        If Not NetworkBreaker.WaitForConnectivity(_Job.Token) Then
+                            ' Timeout: log already written by WaitForConnectivity. Stop cleanly.
+                            _Job.Progress.InformationTemporary = pt("Downloading stopped: no connectivity")
+                            Return
+                        End If
+                    End If
                     Thread.Sleep(500)
                 Loop
                 _Job.Progress.InformationTemporary = pt("All data downloaded")
@@ -708,6 +729,27 @@ Namespace DownloadObjects
                             .InformationTemporary = .Information
                         End With
                         If t.Count > 0 Then Task.WaitAll(t.ToArray)
+                        ' Log any services that were skipped this batch because ReadyToDownload
+                        ' returned False (session interrupted, rate limit, etc.). Without this the
+                        ' user sees the queue drain silently and the job "completes" with nothing done.
+                        If KeysSkipped.Count > 0 Then
+                            Dim skippedByService As New Dictionary(Of String, Integer)
+                            For Each sk$ In KeysSkipped
+                                Dim skUser As IUserData = _Job.Items.Find(Function(ii) ii.Key = sk)
+                                If Not skUser Is Nothing Then
+                                    Dim svcName$ = DirectCast(skUser, UserDataBase).HostCollection.Name
+                                    If skippedByService.ContainsKey(svcName) Then
+                                        skippedByService(svcName) += 1
+                                    Else
+                                        skippedByService.Add(svcName, 1)
+                                    End If
+                                End If
+                            Next
+                            For Each kvp In skippedByService
+                                MyMainLOG = $"[{kvp.Key}]: {kvp.Value} user(s) not downloaded this batch — " &
+                                            "service paused (session error or rate limit). Check log for details."
+                            Next
+                        End If
                         Dim dcc As Boolean = False
                         If Keys.Count > 0 Then
                             For Each k$ In Keys
