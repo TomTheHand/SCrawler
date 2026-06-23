@@ -474,6 +474,38 @@ Namespace API.Base
         Protected Function GetNullPicture(ByVal MaxHeigh As XMLValue(Of Integer)) As Bitmap
             Return New Bitmap(CInt(DivideWithZeroChecking(MaxHeigh.Value, 100) * 75), MaxHeigh.Value)
         End Function
+        ' Returns a new Bitmap exactly matching the ImageList cell dimensions (width = height × 0.75),
+        ' with the source image scaled uniformly to fit inside the cell and centered on a white background.
+        '
+        ' The ImageList stretches whatever image it receives to fill its ImageSize rectangle. Without this
+        ' wrapper, landscape thumbnails (wider than the 3:4 portrait cell) get squashed horizontally and
+        ' portrait/square thumbnails narrower than the cell get stretched. By pre-compositing onto a
+        ' white canvas at the exact target size, we ensure the ImageList has nothing to stretch.
+        '
+        ' Cell dimensions use the same formula as ListImagesLoader and GetNullPicture:
+        '   cellW = Floor(maxHeight / 100) × 75,  cellH = maxHeight
+        '
+        ' The source image has already been scaled to cellH by FitToHeight inside UserImage.GetImage, so
+        ' portrait images typically need no resize here (scale = 1.0) — only landscape images are scaled
+        ' down to fit the narrower cell width, producing white letterbox bars top and bottom.
+        Private Shared Function PadImageToCell(ByVal src As Image, ByVal maxHeight As XMLValue(Of Integer)) As Bitmap
+            Dim cellW As Integer = CInt(DivideWithZeroChecking(maxHeight.Value, 100) * 75)
+            Dim cellH As Integer = maxHeight.Value
+            Dim result As New Bitmap(cellW, cellH)
+            Using g As Graphics = Graphics.FromImage(result)
+                g.Clear(Color.White)
+                If src IsNot Nothing AndAlso src.Width > 0 AndAlso src.Height > 0 Then
+                    Dim scale As Double = Math.Min(CDbl(cellW) / src.Width, CDbl(cellH) / src.Height)
+                    Dim drawW As Integer = CInt(src.Width * scale)
+                    Dim drawH As Integer = CInt(src.Height * scale)
+                    Dim x As Integer = (cellW - drawW) \ 2
+                    Dim y As Integer = (cellH - drawH) \ 2
+                    g.InterpolationMode = Drawing2D.InterpolationMode.HighQualityBicubic
+                    g.DrawImage(src, x, y, drawW, drawH)
+                End If
+            End Using
+            Return result
+        End Function
         Friend Function GetPicture(Of T)(Optional ByVal ReturnNullImageOnNothing As Boolean = True, Optional ByVal GetToast As Boolean = False) As T
             Dim rsfile As Boolean = GetType(T) Is GetType(SFile)
             Dim f As SFile = Nothing
@@ -526,8 +558,8 @@ BlockReturn:
                     End If
                 Else
                     Select Case Settings.ViewMode.Value
-                        Case View.LargeIcon : i = p.Large.OriginalImage.Clone
-                        Case View.SmallIcon : i = p.Small.OriginalImage.Clone
+                        Case View.LargeIcon : i = PadImageToCell(p.Large.OriginalImage, Settings.MaxLargeImageHeight)
+                        Case View.SmallIcon : i = PadImageToCell(p.Small.OriginalImage, Settings.MaxSmallImageHeight)
                     End Select
                 End If
                 p.Dispose()
@@ -1721,6 +1753,21 @@ BlockNullPicture:
             End Sub
         End Class
         Protected Const VideoFolderName As String = "Video"
+        ' Downloads all items in _ContentNew to disk. Called by each site's DownloadContent override.
+        '
+        ' Threading hazard: _ContentNew is iterated by index (For i = 0 To Count-1, bound evaluated
+        ' once). If the UserData object is disposed from another thread mid-loop (e.g. user account
+        ' removed during a batch download), Dispose() calls _ContentNew.Clear(), and the next
+        ' _ContentNew(i) access throws. The outer catch handles this via:
+        '   IndexOutOfRangeException  When Disposed  ← for raw-array accesses
+        '   ArgumentOutOfRangeException When Disposed ← for List(Of T) accesses (the common case)
+        '   ObjectDisposedException   When Disposed
+        ' All three are silently swallowed. Any other exception logs "content downloading error".
+        '
+        ' Inner per-file Try-Catch (around the actual download): catches most per-file errors and
+        ' marks the file as Missing. Exceptions thrown INSIDE a catch handler of the inner Try
+        ' (e.g. ArgumentOutOfRangeException from _ContentNew(i)=v in the cancellation handler)
+        ' escape to the outer Try directly.
         Protected Sub DownloadContentDefault(ByVal Token As CancellationToken)
             Try
                 Dim i%
@@ -1921,7 +1968,8 @@ stxt:
                         End Using
                     End If
                 End If
-            Catch iex As IndexOutOfRangeException When Disposed
+            Catch iex As IndexOutOfRangeException When Disposed          ' raw array cleared by Dispose mid-loop
+            Catch aex As ArgumentOutOfRangeException When Disposed       ' List(Of T) cleared by Dispose mid-loop (the common case — see comment on method)
             Catch oex As OperationCanceledException When Token.IsCancellationRequested
             Catch dex As ObjectDisposedException When Disposed
             Catch ex As Exception
@@ -2001,6 +2049,10 @@ stxt:
                 Throw ex
             ElseIf Not ((TypeOf ex Is OperationCanceledException And (Token.IsCancellationRequested Or TokenPersonal.IsCancellationRequested Or TokenQueue.IsCancellationRequested)) Or
                         (TypeOf ex Is ObjectDisposedException And Disposed)) Then
+                ' Record DNS resolution failures for the global circuit breaker.
+                ' When enough failures accumulate in a short window the breaker trips,
+                ' pausing the run until connectivity returns — see NetworkBreaker.vb.
+                If IsDnsFailure(ex) Then DownloadObjects.NetworkBreaker.RecordDnsFailure()
                 If RDE Then
                     Dim v% = DownloadingException(ex, Message, True, EObj)
                     If v = 0 Then LogError(ex, Message) : HasError = True
@@ -2013,6 +2065,44 @@ stxt:
         End Function
         ''' <summary>0 - Execute LogError and set HasError</summary>
         Protected MustOverride Function DownloadingException(ByVal ex As Exception, ByVal Message As String, Optional ByVal FromPE As Boolean = False, Optional ByVal EObj As Object = Nothing) As Integer
+        ''' <summary>
+        ''' Walks the full exception chain looking for a <see cref="Net.WebException"/> with
+        ''' <see cref="Net.WebExceptionStatus.NameResolutionFailure"/>. Used by
+        ''' <see cref="ProcessException"/> to detect DNS outages for the circuit breaker.
+        ''' </summary>
+        Private Shared Function IsDnsFailure(ByVal ex As Exception) As Boolean
+            Dim inner As Exception = ex
+            Do While Not inner Is Nothing
+                If TypeOf inner Is Net.WebException Then
+                    If DirectCast(inner, Net.WebException).Status = Net.WebExceptionStatus.NameResolutionFailure Then
+                        Return True
+                    End If
+                End If
+                inner = inner.InnerException
+            Loop
+            Return False
+        End Function
+        ''' <summary>
+        ''' Calls <paramref name="Resp"/>.GetResponse(<paramref name="URL"/>) but swallows the
+        ''' <see cref="NullReferenceException"/> that PersonalUtilities.Responser throws from its
+        ''' OWN catch handler when its internal _ErrorProcessor field is null (the field is never
+        ''' initialised in the Responser constructor, so any HTTP-level error — timeout, 4xx/5xx,
+        ''' DNS — triggers a NullRef at the point GetResponse tries to delegate error handling).
+        ''' On that NullRef we return <see cref="String.Empty"/>, which every caller already treats
+        ''' as a failed/empty response. See Reddit Bug 3 for the original diagnosis.
+        '''
+        ''' Use this in place of the bare single-argument GetResponse call. It deliberately does NOT
+        ''' expose the PayLoad / ErrorsDescriber overloads: those callers pass an explicit
+        ''' ErrorsDescriber (e.g. EDP.ReturnValue) which already suppresses the throw, so they don't
+        ''' hit the broken handler and don't need wrapping.
+        ''' </summary>
+        Protected Shared Function SafeGetResponse(ByVal Resp As Responser, ByVal URL As String) As String
+            Try
+                Return Resp.GetResponse(URL)
+            Catch nre As NullReferenceException
+                Return String.Empty
+            End Try
+        End Function
 #End Region
 #Region "ChangeFileNameByProvider, RunScript"
         Protected Overridable Function CreateFileFromUrl(ByVal URL As String) As SFile

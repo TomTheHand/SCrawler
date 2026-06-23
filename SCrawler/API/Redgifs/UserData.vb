@@ -35,16 +35,48 @@ Namespace API.RedGifs
         End Sub
 #End Region
 #Region "Download functions"
+        ' Entry point for all RedGifs user downloads.
+        '
+        ' Token management: RedGifs uses temporary bearer tokens that expire. SiteSettings
+        ' auto-refreshes the token (every TokenUpdateInterval minutes), but UserData.Responser
+        ' is a COPY made at download start in UserDataBase.DownloadData() — before DownloadDataF
+        ' runs. Even if the token was fresh at copy time it may have since expired. We call
+        ' UpdateTokenIfRequired() here to proactively refresh, then re-apply the (possibly
+        ' updated) token value to our local Responser copy.
+        '
+        ' Why this matters for silent failures: if the token is stale every GetResponse call
+        ' returns HTTP 401 → Responser returns "" → the gifs loop never runs → the download
+        ' appears to complete successfully with nothing downloaded and no error in the log.
         Protected Overrides Sub DownloadDataF(ByVal Token As CancellationToken)
             If Not MySettings.UseCookies.Value Then Responser.Cookies.Clear()
+            ' Refresh auth token if expired; bail early with a log if the refresh itself fails.
+            If Not MySettings.UpdateTokenIfRequired() Then
+                MyMainLOG = $"{ToStringForLog()}: RedGifs token refresh failed — download skipped. Check credentials in RedGifs site settings."
+                Exit Sub
+            End If
+            ' Re-sync the token to our Responser copy. UpdateTokenIfRequired() updates the
+            ' site-level Responser.Headers; our copy (made earlier) doesn't get that update
+            ' automatically, so we push the current token value into our Responser here.
+            Responser.Headers.Add("authorization", MySettings.Token.Value)
             DownloadData(1, Token)
         End Sub
+        ' Downloads one page of gifs and recurses for subsequent pages (pagination is RECURSIVE).
+        '
+        ' Silent failure modes — all produce zero downloads and zero errors without the fixes below:
+        '   1. GetResponse returns "" due to HTTP failure (expired/invalid token → 401, user
+        '      not found → 404, network error). Now logged via the Else branch.
+        '   2. GetResponse throws NullReferenceException from PersonalUtilities._ErrorProcessor
+        '      being null (same bug as Reddit). Now caught and treated as case 1.
+        ' Note: Exit Sub on duplicate postID is expected behaviour (API is newest-first; once we
+        ' hit a known post everything behind it is also known). Not an error — not logged.
         Private Overloads Sub DownloadData(ByVal Page As Integer, ByVal Token As CancellationToken)
             Dim URL$ = String.Empty
             Try
                 Dim _page As Func(Of String) = Function() If(Page = 1, String.Empty, $"&page={Page}")
                 URL = $"https://api.redgifs.com/v2/users/{Name}/search?order=recent{_page.Invoke}"
-                Dim r$ = Responser.GetResponse(URL)
+                ' SafeGetResponse swallows the PersonalUtilities _ErrorProcessor NullRef (Bug 3);
+                ' the empty-response Else branch below logs the HTTP status.
+                Dim r$ = SafeGetResponse(Responser, URL)
                 Dim postDate$, postID$
                 Dim pTotal% = 0
                 If Not r.IsEmptyString Then
@@ -60,11 +92,23 @@ Namespace API.RedGifs
                                     Case DateResult.Exit : Exit Sub
                                 End Select
                                 postID = g.Value("id")
-                                If Not _TempPostsList.Contains(postID) Then _TempPostsList.Add(postID) Else Exit Sub
+                                If Not _TempPostsList.Contains(postID) Then
+                                    _TempPostsList.Add(postID)
+                                Else
+                                    ' This post is already known. Since the API returns newest-first,
+                                    ' everything behind it is also already known — stop here.
+                                    ' This is normal on re-downloads and is not an error; no log entry.
+                                    Exit Sub
+                                End If
                                 ObtainMedia(g, postID, postDate)
                             Next
                         End If
                     End Using
+                Else
+                    ' Empty response — log the HTTP status so the cause is visible in the log.
+                    ' Common causes: expired/invalid token (401), user not found (404), network error.
+                    Dim sc% = CInt(Responser.StatusCode)
+                    MyMainLOG = $"{ToStringForLog()}: RedGifs — no response from page {Page} [{URL}]{If(sc <> 0, $" (HTTP {sc})", String.Empty)}. Token may need refreshing."
                 End If
                 If pTotal > 0 And Page < pTotal Then DownloadData(Page + 1, Token)
             Catch ex As Exception
@@ -105,6 +149,43 @@ Namespace API.RedGifs
         Protected Overrides Sub ReparseMissing(ByVal Token As CancellationToken)
             Dim rList As New List(Of Integer)
             Try
+                ' "Download missing posts" (DownloadMissingOnly) skips DownloadDataF entirely
+                ' (see UserDataBase.DownloadData), so the listing-page request that would normally
+                ' detect a 404'd account and set UserExists=False (via DownloadingException) never
+                ' runs — UserExists is left at the EnvirReset default of True. Spend one cheap
+                ' user-info request up front (replicating DownloadDataF's token setup), with the
+                ' same default error handling as the normal listing request, so a 404 here sets
+                ' UserExists=False the same way.
+                If DownloadMissingOnly Then
+                    If Not MySettings.UseCookies.Value Then Responser.Cookies.Clear()
+                    If MySettings.UpdateTokenIfRequired() Then
+                        Responser.Headers.Add("authorization", MySettings.Token.Value)
+                        Try
+                            Responser.GetResponse($"https://api.redgifs.com/v2/users/{Name}")
+                        Catch ex As Exception
+                            ProcessException(ex, Token, $"existence check error [{ToStringForLog()}]")
+                        End Try
+                    End If
+                End If
+                If Not UserExists Then
+                    ' Account no longer exists — none of its still-Missing posts can ever become
+                    ' recoverable. Give up on all of them now instead of re-fetching each one.
+                    If ContentMissingExists Then
+                        Dim missingCount% = 0
+                        For ci% = 0 To _ContentList.Count - 1
+                            If _ContentList(ci).State = UStates.Missing Then
+                                rList.Add(ci)
+                                missingCount += 1
+                            End If
+                        Next
+                        If missingCount > 0 Then
+                            MyMainLOG = $"{ToStringForLog()}: ReparseMissing — account no longer exists; " &
+                                        $"removing {missingCount} missing item(s) from missing list."
+                            _ForceSaveUserData = True
+                        End If
+                    End If
+                    Exit Sub
+                End If
                 If ContentMissingExists Then
                     Dim url$, r$
                     Dim u As UserMedia
@@ -116,7 +197,8 @@ Namespace API.RedGifs
                             ThrowAny(Token)
                             u = _ContentList(i)
                             If Not u.Post.ID.IsEmptyString Then
-                                url = String.Format(PostDataUrl, u.Post.ID.ToLower)
+                                ' Strip any stale backslash from stored IDs (literal or percent-encoded).
+                                url = String.Format(PostDataUrl, Uri.UnescapeDataString(u.Post.ID).Replace("\", String.Empty).ToLower)
                                 Try
                                     r = Responser.GetResponse(url)
                                     If Not r.IsEmptyString Then
@@ -181,6 +263,11 @@ Namespace API.RedGifs
                     End If
                     If Not Host Is Nothing AndAlso Host.Source.Available(Plugin.ISiteSettings.Download.Main, True) Then
                         If Responser Is Nothing Then Responser = Host.Responser.Copy
+                        ' Strip any stale backslash from the ID before constructing the URL.
+                        ' The ID may arrive with a literal backslash OR a percent-encoded one (%5c/%5C)
+                        ' if the source URL (e.g. from Reddit JSON) carried it. UnescapeDataString
+                        ' converts %5c → \ first, then Replace strips the resulting backslash.
+                        Obj = Uri.UnescapeDataString(Obj).Replace("\", String.Empty)
                         URL = String.Format(PostDataUrl, Obj.ToLower)
                         Dim r$ = Responser.GetResponse(URL,, EDP.ThrowException)
                         If Not r.IsEmptyString Then
@@ -235,6 +322,9 @@ Namespace API.RedGifs
         Private Function MediaFromData(ByVal t As UTypes, ByVal _URL As String, ByVal PostID As String,
                                        ByVal PostDateStr As String, ByVal PostDateDate As Date?, ByVal State As UStates, Optional ByVal Attempts As Integer = 0) As UserMedia
             _URL = LinkFormatterSecure(RegexReplace(_URL.Replace("\", String.Empty), LinkPattern))
+            ' Strip backslashes from PostID for the same reason as _URL — a trailing \ in a stored
+            ' Post ID causes a malformed API URL in ReparseMissing (e.g. "id\?" → HTTP 405).
+            PostID = PostID.Replace("\", String.Empty)
             Dim m As New UserMedia(_URL, t) With {.Post = New UserPost With {.ID = PostID}}
             If Not m.URL.IsEmptyString Then m.File = CStr(RegexReplace(m.URL, FilesPattern))
             If Not PostDateStr.IsEmptyString Then

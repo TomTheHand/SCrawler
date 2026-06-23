@@ -583,7 +583,11 @@ Namespace API.Instagram
                             Case Else : WaitNotificationMode = WNM.SkipTemp
                         End Select
                     End If
-                    If Not ProgressTempSet Then Progress.InformationTemporary = $"Waiting until { .GetWaitDate().ToString(DateTimeDefaultProvider)}"
+                    If Not ProgressTempSet Then
+                        Dim waitMsg$ = $"Instagram: rate-limit wait — pausing until { .GetWaitDate().ToString(DateTimeDefaultProvider)}"
+                        MyMainLOG = $"{ToStringForLog()}: {waitMsg}"
+                        Progress.InformationTemporary = $"Waiting until { .GetWaitDate().ToString(DateTimeDefaultProvider)}"
+                    End If
                     ProgressTempSet = True
                     Return False
                 Else
@@ -599,7 +603,15 @@ Namespace API.Instagram
         Private Sub NextRequest(ByVal StartWait As Boolean)
             With MySiteSettings
                 If StartWait And RequestsCount > 0 And (RequestsCount Mod .RequestsWaitTimerTaskCount.Value) = 0 Then Thread.Sleep(CInt(.RequestsWaitTimer.Value))
-                If RequestsCount >= MaxPostsCount - 5 Then Thread.Sleep(CInt(.SleepTimerOnPostsLimit.Value))
+                If RequestsCount >= MaxPostsCount - 5 Then
+                    ' Proactive self-throttle: pause to avoid hitting Instagram's request limit.
+                    ' Without the log/label update below, this is a silent multi-second freeze —
+                    ' indistinguishable from a hang.
+                    Dim waitMsg$ = $"Instagram: rate-limit self-throttle — pausing {CInt(.SleepTimerOnPostsLimit.Value) \ 1000}s (request #{RequestsCount})"
+                    MyMainLOG = $"{ToStringForLog()}: {waitMsg}"
+                    If Not Progress Is Nothing Then Progress.InformationTemporary = waitMsg
+                    Thread.Sleep(CInt(.SleepTimerOnPostsLimit.Value))
+                End If
             End With
         End Sub
 #End Region
@@ -673,6 +685,17 @@ Namespace API.Instagram
             Loop
         End Function
 #End Region
+        ' Downloads one page of content for the given Section and recurses for subsequent pages.
+        ' Handles Timeline, Reels, SavedPosts, Tagged, Stories, UserStories — Section switches
+        ' both the URL built and the JSON parsing logic.
+        ' Pagination is RECURSIVE (same pattern as Reddit DownloadDataUser).
+        '
+        ' Silent failure modes — all produce zero downloads without the fixes below:
+        '   1. GetResponse returns "" due to HTTP failure (expired/invalid credentials → 401,
+        '      rate-limited → 429, network error). Previously threw ExitException silently.
+        '      Now logs HTTP status via MyMainLOG before throwing.
+        '   2. GetResponse throws NullReferenceException from PersonalUtilities._ErrorProcessor
+        '      being null (same bug as Reddit). Now caught; r = String.Empty.
         Private Overloads Sub DownloadData(ByVal Cursor As String, ByVal Section As Sections, ByVal Token As CancellationToken)
             Dim URL$ = String.Empty
             Dim StoriesList As List(Of String) = Nothing
@@ -773,7 +796,9 @@ Namespace API.Instagram
                         'Get response
                         If processGetResponse Then
                             UpdateRequestNumber()
-                            r = Responser.GetResponse(URL)
+                            ' SafeGetResponse swallows the PersonalUtilities _ErrorProcessor NullRef (Bug 3);
+                            ' the empty-response Else branch below logs the HTTP status.
+                            r = SafeGetResponse(Responser, URL)
                         End If
                         MySiteSettings.TooManyRequests(False)
                         ThrowAny(Token)
@@ -865,6 +890,10 @@ Namespace API.Instagram
                                 End If
                             End Using
                         Else
+                            ' Empty response — log the HTTP status before bailing.
+                            ' Common causes: expired/invalid credentials (401), rate-limited (429), network error.
+                            Dim sc% = CInt(Responser.StatusCode)
+                            MyMainLOG = $"{ToStringForLog()}: Instagram — no response [{URL}]{If(sc <> 0, $" (HTTP {sc})", String.Empty)}. Credentials may have expired."
                             Throw New ExitException
                         End If
 NextPageBlock:
@@ -1294,6 +1323,11 @@ NextPageBlock:
                         End If
                     End Using
                 End If
+            Catch eex As ExitException
+                ' ExitException means token validation failed (or another clean-exit condition).
+                ' Do NOT mark the user as non-existent — this is an auth failure, not a missing account.
+                ' Let it propagate to DownloadData's ExitException handler so the download aborts cleanly.
+                Throw
             Catch ex As Exception
                 UserExists = False
                 If Not __idFound Then
