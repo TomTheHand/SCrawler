@@ -317,6 +317,22 @@ Namespace DownloadObjects
         ''' concurrently, while UserRemove can fire from the UI thread mid-run.
         ''' </summary>
         Private ReadOnly FeedDataLock As New Object
+        ''' <summary>Copy of <see cref="Downloaded"/> taken under <see cref="FeedDataLock"/>; safe to enumerate on any thread.</summary>
+        Friend Function DownloadedSnapshot() As List(Of IUserData)
+            SyncLock FeedDataLock : Return New List(Of IUserData)(Downloaded) : End SyncLock
+        End Function
+        Friend Sub DownloadedClear()
+            SyncLock FeedDataLock : Downloaded.Clear() : End SyncLock
+        End Sub
+        Friend Function DownloadedRemoveAll(ByVal Match As Predicate(Of IUserData)) As Integer
+            SyncLock FeedDataLock : Return Downloaded.RemoveAll(Match) : End SyncLock
+        End Function
+        Friend Sub FilesAddRange(ByVal Items As IEnumerable(Of UserMediaD))
+            SyncLock FeedDataLock : Files.AddRange(Items) : End SyncLock
+        End Sub
+        Friend Sub FilesSort()
+            SyncLock FeedDataLock : Files.Sort() : End SyncLock
+        End Sub
         Private ReadOnly NProv As IFormatProvider
 #End Region
 #Region "Working, Count"

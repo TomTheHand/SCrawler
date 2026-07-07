@@ -26,7 +26,7 @@ Any Claude session (any model) resumes from this file — read it fully before t
 
 | Chunk | Target | ~Lines | Status |
 |-------|--------|--------|--------|
-| 1 | `SCrawler\API\Base` + `API\BaseObjects` + `SCrawler\Download` core; start activity-log instrumentation | 8k | pending |
+| 1 | `SCrawler\API\Base` + `API\BaseObjects` + `SCrawler\Download` core; start activity-log instrumentation | 8k | **done** (2026-07-07) |
 | 2 | Top-level `SCrawler\` (settings, MainFrame plumbing); finish activity-log UI | 6.7k | pending |
 | 3 | `API\Reddit` + `API\Redgifs` + `API\Imgur` + `API\Gfycat` | 4.3k | pending |
 | 4 | `API\Instagram` + `API\TikTok` | 3.8k | pending |
@@ -36,6 +36,36 @@ Any Claude session (any model) resumes from this file — read it fully before t
 ## Reviewed
 
 *(module → date → outcome; append as chunks complete)*
+
+### Chunk 1 (2026-07-07) — API\Base + API\BaseObjects + Download core
+
+Read in full: `TDownloader.vb`, `UserDataBase.vb`, `Structures.vb`, `SiteSettingsBase.vb`, `WebClient2.vb`,
+`TokenBatch.vb`, `NetworkBreaker.vb`, `ProfileSaved.vb`, `IUserData.vb`, `DownDetector.vb`, `M3U8Base.vb`,
+`MissingPostsForm.vb`, `DownloadProgress.vb`, `DownloadedInfoForm.vb`, `UserDownloadQueueForm.vb`,
+`ActiveDownloadingProgress.vb`, `DownloadSavedPostsForm.vb`, `InternalSettingsForm.vb`, `DomainsContainer.vb`,
+`Declarations.vb`, `DeclaredNames.vb`, `GDL.vb`, `YTDLP.vb`, `EditorExchangeOptionsBase*.vb`,
+`SplitCollectionUserInfo.vb`. New file: `Download\ActivityLog.vb`.
+
+Bugs fixed (see *Fixes applied*): UserMediaD.Equals wrong-type cast; Job.Finish self-thread-abort
+skipping `DownloadDone` (host active-task counter drifted up forever, availability cache never reset);
+unsynchronized shared `Files`/`Downloaded` lists (added `FeedDataLock` + lock-aware helpers
+`DownloadedSnapshot/DownloadedClear/DownloadedRemoveAll/FilesAddRange/FilesSort`; converted readers in
+DownloadedInfoForm + AutoDownloader and producers in ProfileSaved); per-file DNS failures never fed
+NetworkBreaker + tripped breaker now pauses the file loop; `UserMedia.New(EContainer)` path
+reconstruction diverged from downloader placement rules (untrimmed `*` marker, unconditional `Video\`).
+
+Notes (no action, for later chunks):
+- `TDownloader.FilesSave` spin-waits (`Thread.Sleep(100)` loop) — Feed jank candidate (chunk 5).
+- Feed reads `Downloader.Files` without `FeedDataLock` — readers still unsynchronized (chunk 5).
+- Unavailable-host users go to `Keys` but not `KeysSkipped` → removed from `_Job.Items` without downloading.
+- One host hitting its task limit exits the whole batch loop (`Exit For` in TDownloader).
+- Totals recount in UserDataBase (~1375): pictures mask top-dir-only + includes webm; videos recursive — asymmetric, author intent unclear.
+- `Continue For` in the stxt text-post block (~1926) skips `_ContentNew(i) = v` write-back and `Progress.Perform`.
+- `ProfileSaved`: `_Unavailable`/`_NotReady` counters swapped vs. their messages (only ever summed — cosmetic).
+- `DownloadProgress.Dispose` never disposes `PR_PRE` and never unhooks `Job.Progress` handlers; `ActiveDownloadingProgress` disposes DownloadProgress objects without unhooking — leak-class only.
+- `DownloadProgress.DownloadData` would NRE on `BTT_START` for a `Download.Main`-type job (buttons only exist for SavedPosts) — currently unreachable, don't extend.
+- `M3U8Base.Download`: `Throw ex` resets stack traces; `Cache.DisposeIfReady` in Finally relies on extension-method Nothing-tolerance; passing `ExistingCache` gets it disposed on the callee side.
+- `UserMedia.GetHashCode` built on mutable fields; event raisers swallow exceptions broadly.
 
 Pre-ledger work (earlier sessions, already committed to fork):
 - `Download\NetworkBreaker.vb` — new DNS-failure circuit breaker (written by Claude, reviewed).
@@ -47,12 +77,21 @@ Pre-ledger work (earlier sessions, already committed to fork):
 
 *(append per chunk: commit hash — summary)*
 
+- `27cb8bf` — Chunk 1 (part 1): TDownloader fixes (UserMediaD.Equals cast, Job.Finish self-abort guard,
+  FeedDataLock for Files/Downloaded producers, DNS→NetworkBreaker feed + tripped-breaker pause in
+  DownloadContentDefault) + ActivityLog module and full producer instrumentation.
+- `53ca6a5` — Structures.vb: saved-post path reconstruction mirrors DownloadContentDefault placement rules.
+- *(this commit)* — FeedDataLock helpers on TDownloader; converted unsynchronized consumers
+  (DownloadedInfoForm enumerate/clear, AutoDownloader RemoveAll, ProfileSaved Files.AddRange/Sort).
+
 ## Open Suspicions
 
 *(one half of a cross-module interaction seen; verify when the other half is read)*
 
 - `DownloadMissingOnly` mode skips `DownloadDataF`, leaving `UserExists` defaulted to `True` unless a module probes explicitly. Modules NOT yet audited for this: Reddit, Redgifs, Instagram, TikTok (the ones we actually use!). Check in chunks 3–4.
-- The four prior ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter) each hand-roll the existence-probe pattern — when reading `UserDataBase` in chunk 1, consider whether a shared base-class hook is safer.
+- The four prior ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter) each hand-roll the existence-probe pattern — chunk 1 read `UserDataBase` and confirmed the mechanism (`EnvirDownloadSet` resets `UserExists=True` every run); a shared base hook remains an option if chunks 3–4 need the same fix again.
+- Chunk 2 must build the activity-log viewer UI: subscribe `ActivityLog.EntryAdded` (raised on producer threads — BeginInvoke to UI), backfill via `Snapshot()`; leaning dockable live-log window.
+- Chunk 5: check whether Feed code compensates for the old broken `UserMedia.New(EContainer)` path reconstruction (fixed in 53ca6a5) — a compensating hack there would now double-correct.
 
 ## PersonalUtilities Hazards (closed-source, work around only)
 

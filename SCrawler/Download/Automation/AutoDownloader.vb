@@ -588,7 +588,7 @@ Namespace DownloadObjects
                 Dim simple As Boolean = ShowSimpleNotification And ShowNotifications
                 Dim notify As Action = Sub()
                                            Try
-                                               With Downloader.Downloaded
+                                               With Downloader.DownloadedSnapshot()
                                                    If ShowNotifications And .Count > 0 Then
                                                        For indx% = 0 To .Count - 1
                                                            With .Item(indx)
@@ -618,7 +618,7 @@ Namespace DownloadObjects
                     Keys.ListAddList(users.Select(Function(u) u.Key))
                     With Downloader
                         .AutoDownloaderWorking = True
-                        If .Downloaded.Count > 0 Then .Downloaded.RemoveAll(Function(u) Keys.Contains(u.Key)) : .InvokeDownloadsChangeEvent()
+                        If .DownloadedRemoveAll(Function(u) Keys.Contains(u.Key)) > 0 Then .InvokeDownloadsChangeEvent()
                         Do
                             Try
                                 doRound += 1

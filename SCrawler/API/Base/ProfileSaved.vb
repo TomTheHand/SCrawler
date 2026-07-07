@@ -47,7 +47,7 @@ Namespace API.Base
                     Progress.InformationTemporary = $"{HOST.Name} ({c - s}/{c}) Images: {_TotalImages}; Videos: {_TotalVideos}"
                 End If
             End If
-            If _FeedDataExists Then Downloader.Files.Sort() : Downloader.FilesSave()
+            If _FeedDataExists Then Downloader.FilesSort() : Downloader.FilesSave()
         End Sub
         Private Overloads Sub Download(ByVal Host As SettingsHost, ByVal Number As Integer, ByVal Count As Integer,
                                        ByVal Token As CancellationToken, ByVal Multiple As Boolean)
@@ -73,7 +73,7 @@ Namespace API.Base
                                     _TotalVideos += .DownloadedVideos(False)
                                     If IncludeInTheFeed And .LatestData.Count > 0 Then
                                         _FeedDataExists = True
-                                        Downloader.Files.AddRange(.LatestData.Select(Function(m) New UserMediaD(m, .Self, Session) With {.IsSavedPosts = True}))
+                                        Downloader.FilesAddRange(.LatestData.Select(Function(m) New UserMediaD(m, .Self, Session) With {.IsSavedPosts = True}))
                                     End If
                                     Progress.InformationTemporary = $"{Host.Name}{aStr} Images: { .DownloadedPictures(False)}; Videos: { .DownloadedVideos(False)}"
                                     Host.AfterDownload(.Self, PDownload.SavedPosts)

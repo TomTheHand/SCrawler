@@ -118,7 +118,7 @@ Namespace DownloadObjects
                 Try
                     ControlInvokeFast(LIST_DOWN, Sub() LIST_DOWN.Items.Clear())
                     If ViewMode = ViewModes.Session Then
-                        With Downloader.Downloaded
+                        With Downloader.DownloadedSnapshot()
                             If .Count > 0 Then
                                 With .Select(Function(u) Settings.GetUser(u, False)).Reverse
                                     If _UsersListSession.Count > 0 Then _UsersListSession.ListWithRemove(.Self, New ListAddParams With {.DisableDispose = True})
@@ -206,7 +206,7 @@ Namespace DownloadObjects
             Try : RaiseEvent UserFind(If(Settings.GetUser(SelectedUser, True)?.Key, String.Empty)) : Catch : End Try
         End Sub
         Private Sub BTT_CLEAR_Click(sender As Object, e As EventArgs) Handles BTT_CLEAR.Click
-            If LIST_DOWN.Items.Count > 0 Then Downloader.Downloaded.Clear() : RefillList()
+            If LIST_DOWN.Items.Count > 0 Then Downloader.DownloadedClear() : RefillList()
         End Sub
 #End Region
 #Region "List handlers"
