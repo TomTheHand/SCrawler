@@ -1816,6 +1816,7 @@ BlockNullPicture:
 
                         Using w As New OptionalWebClient(Me)
                             If vsf Then CSFileP($"{MyDir}\{VideoFolderName}\").Exists(SFO.Path)
+                            DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: {_ContentNew.Count} new file(s) to download")
                             Progress.Maximum += _ContentNew.Count
                             If IsSingleObjectDownload Then
                                 If _ContentNew.Count = 1 And _ContentNew(0).Type = UTypes.Video Then
@@ -1831,6 +1832,12 @@ BlockNullPicture:
 
                             For i = 0 To _ContentNew.Count - 1
                                 ThrowAny(Token)
+                                ' If the DNS circuit breaker tripped mid-user, every remaining file is a
+                                ' guaranteed slow failure — block here until connectivity returns. If it
+                                ' doesn't, exit: un-attempted files are re-detected as new on the next run
+                                ' (same early-exit semantics as the DownloadTopCount Exit Sub below).
+                                If DownloadObjects.NetworkBreaker.IsTripped AndAlso
+                                   Not DownloadObjects.NetworkBreaker.WaitForConnectivity(Token) Then Exit Sub
                                 v = _ContentNew(i)
                                 v.State = UStates.Tried
                                 If v.File.IsEmptyString Then
@@ -1848,6 +1855,7 @@ BlockNullPicture:
 
                                 If (v.Type = UTypes.Text And DownloadText) Or (Not f.IsEmptyString And Not v.URL.IsEmptyString) Then
                                     Try
+                                        DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: downloading {i + 1}/{_ContentNew.Count}: {v.URL.IfNullOrEmpty("(text post)")}")
                                         If v.Type = UTypes.Text Then GoTo stxt
                                         __isVideo = v.Type = UTypes.Video Or f.Extension = "mp4" Or v.Type = UTypes.m3u8
 
@@ -1947,6 +1955,11 @@ stxt:
                                         _ContentNew(i) = v
                                         Throw woex
                                     Catch wex As Exception
+                                        ' Feed the DNS circuit breaker from the per-file path too. Without this,
+                                        ' only API-level failures (ProcessException) counted — a connectivity drop
+                                        ' during a long file loop never tripped the breaker.
+                                        If IsDnsFailure(wex) Then DownloadObjects.NetworkBreaker.RecordDnsFailure()
+                                        DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: FAILED {i + 1}/{_ContentNew.Count}: {v.URL}")
                                         If Not v.Type = UTypes.Text AndAlso DownloadContentDefault_ProcessDownloadException() Then
                                             v.Attempts += 1
                                             v.State = UStates.Missing
@@ -1965,6 +1978,7 @@ stxt:
                                     Progress.Perform()
                                 End If
                             Next
+                            DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: {dCount} file(s) downloaded")
                         End Using
                     End If
                 End If

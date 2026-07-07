@@ -142,7 +142,7 @@ Namespace DownloadObjects
                 Return Data.File = Other.Data.File
             End Function
             Public Overloads Overrides Function Equals(ByVal Obj As Object) As Boolean
-                Return Equals(DirectCast(Obj, UserMedia))
+                Return Equals(DirectCast(Obj, UserMediaD))
             End Function
             Friend Function ToEContainer(Optional ByVal e As ErrorsDescriber = Nothing) As EContainer Implements IEContainerProvider.ToEContainer
                 Return ListAddValue(New EContainer(Name_Data, String.Empty) From {
@@ -311,6 +311,12 @@ Namespace DownloadObjects
         End Sub
 #End Region
         Friend ReadOnly Property Downloaded As List(Of IUserData)
+        ''' <summary>
+        ''' Guards mutations of the shared <see cref="Files"/> and <see cref="Downloaded"/> lists:
+        ''' jobs run on parallel threads (separated tasks / task groups) and all push into them
+        ''' concurrently, while UserRemove can fire from the UI thread mid-run.
+        ''' </summary>
+        Private ReadOnly FeedDataLock As New Object
         Private ReadOnly NProv As IFormatProvider
 #End Region
 #Region "Working, Count"
@@ -465,7 +471,12 @@ Namespace DownloadObjects
                 TokenSource = Nothing
                 Try
                     If Not Thread Is Nothing Then
-                        If Thread.IsAlive Then Thread.Abort()
+                        ' Finish is only ever called from StartDownloading's Finally — i.e. on this
+                        ' job's own thread. Aborting the current thread raises a ThreadAbortException
+                        ' that is auto-rethrown at the end of the Catch below, which silently skipped
+                        ' the DownloadDone calls: every host's _ActiveTaskCount drifted upward forever
+                        ' and its cached availability state was never reset between runs.
+                        If Thread.IsAlive AndAlso Not Thread.ManagedThreadId = Threading.Thread.CurrentThread.ManagedThreadId Then Thread.Abort()
                         Thread = Nothing
                     End If
                 Catch ex As Exception
@@ -605,7 +616,7 @@ Namespace DownloadObjects
                 UpdateJobsLabel()
                 If MissingPostsDetected And Settings.AddMissingToLog Then _
                    MyMainLOG = "Some posts didn't download. You can see them in the 'Missing posts' form."
-                Files.Sort()
+                SyncLock FeedDataLock : Files.Sort() : End SyncLock
                 FilesChanged = Not fBefore = Files.Count
                 RaiseEvent Downloading(False)
                 FilesUpdatePendingUsers()
@@ -623,6 +634,7 @@ Namespace DownloadObjects
                                                 End Function
             Try
                 _Job.Start()
+                ActivityLog.Add($"[{n}] job started — {_Job.Count} user(s) queued")
                 _Job.Progress.Maximum = 0
                 _Job.Progress.Value = 0
                 _Job.Progress.Visible = True
@@ -655,6 +667,7 @@ Namespace DownloadObjects
             Finally
                 If _Job.Count > 0 Then _Job.Clear()
                 _Job.Finish()
+                ActivityLog.Add($"[{n}] job finished")
             End Try
         End Sub
         Friend Sub [Stop]()
@@ -710,6 +723,7 @@ Namespace DownloadObjects
                                     host.BeforeStartDownload(_Item, Download.Main)
                                     _Job.ThrowIfCancellationRequested()
                                     DirectCast(_Item, UserDataBase).Progress = _Job.Progress
+                                    ActivityLog.Add($"[{_Item.Site}] {_Item.Name}: download starting")
                                     t.Add(Task.Run(Sub() _Item.DownloadData(Token)))
                                     RaiseEvent UserDownloadStateChanged(_Item, True)
                                     limit = limit.Next
@@ -748,6 +762,7 @@ Namespace DownloadObjects
                             For Each kvp In skippedByService
                                 MyMainLOG = $"[{kvp.Key}]: {kvp.Value} user(s) not downloaded this batch — " &
                                             "service paused (session error or rate limit). Check log for details."
+                                ActivityLog.Add($"[{kvp.Key}] {kvp.Value} user(s) skipped — service paused (session error or rate limit)")
                             Next
                         End If
                         Dim dcc As Boolean = False
@@ -761,11 +776,14 @@ Namespace DownloadObjects
                                             RaiseEvent UserDownloadStateChanged(.Self, False)
                                             host = _Job.UserHost(.Self)
                                             host.AfterDownload(.Self, Download.Main)
+                                            ActivityLog.Add($"[{.Site}] {.Name}: completed — {.DownloadedTotal(False)} new file(s)")
                                             If Not .Disposed AndAlso Not .IsCollection AndAlso .DownloadedTotal(False) > 0 Then
-                                                If Not Downloaded.Contains(.Self) Then Downloaded.Add(Settings.GetUser(.Self))
-                                                With DirectCast(.Self, UserDataBase)
-                                                    If .LatestData.Count > 0 And .IncludeInTheFeed Then Files.ListAddList(.LatestData.Select(Function(d) New UserMediaD(d, .Self, Session)), FilesLP)
-                                                End With
+                                                SyncLock FeedDataLock
+                                                    If Not Downloaded.Contains(.Self) Then Downloaded.Add(Settings.GetUser(.Self))
+                                                    With DirectCast(.Self, UserDataBase)
+                                                        If .LatestData.Count > 0 And .IncludeInTheFeed Then Files.ListAddList(.LatestData.Select(Function(d) New UserMediaD(d, .Self, Session)), FilesLP)
+                                                    End With
+                                                End SyncLock
                                                 dcc = True
                                             End If
                                         End With
@@ -777,7 +795,7 @@ Namespace DownloadObjects
                         Keys.Clear()
                         KeysSkipped.Clear()
                         _Job.Items.RemoveAll(Function(ii) ii.Disposed)
-                        If dcc Then Downloaded.RemoveAll(Function(u) u Is Nothing)
+                        If dcc Then SyncLock FeedDataLock : Downloaded.RemoveAll(Function(u) u Is Nothing) : End SyncLock
                         If dcc And Downloaded.Count > 0 Then RaiseEvent DownloadCountChange()
                         t.Clear()
                     End If
@@ -833,8 +851,14 @@ Namespace DownloadObjects
             Return False
         End Function
         Friend Sub UserRemove(ByVal _Item As IUserData)
-            If Downloaded.Count > 0 AndAlso Downloaded.Contains(_Item) Then Downloaded.Remove(_Item) : RaiseEvent DownloadCountChange()
-            If Files.Count > 0 AndAlso Files.RemoveAll(Function(f) Not f.User Is Nothing AndAlso f.User.Equals(_Item)) > 0 Then RaiseEvent FeedFilesChanged(False)
+            Dim dChanged As Boolean = False, fChanged As Boolean = False
+            SyncLock FeedDataLock
+                If Downloaded.Count > 0 AndAlso Downloaded.Contains(_Item) Then Downloaded.Remove(_Item) : dChanged = True
+                If Files.Count > 0 AndAlso Files.RemoveAll(Function(f) Not f.User Is Nothing AndAlso f.User.Equals(_Item)) > 0 Then fChanged = True
+            End SyncLock
+            ' Events raised outside the lock: subscribers touch UI and may call back into this class.
+            If dChanged Then RaiseEvent DownloadCountChange()
+            If fChanged Then RaiseEvent FeedFilesChanged(False)
         End Sub
 #End Region
 #Region "IDisposable Support"
