@@ -240,9 +240,15 @@ Namespace API.Base
                 End If
 
                 'TODO: UserMedia.SpecialFolder
+                ' Path reconstruction must mirror DownloadContentDefault's placement rules:
+                ' - the special folder is created with its trailing "*" marker trimmed;
+                ' - only videos go into the separate Video folder, and not when the special
+                '   folder ends with "*" (e.g. Instagram stories use "Video\*").
                 SpecialFolder = e.Attribute(Name_SpecialFolder).Value
-                If Not SpecialFolder.IsEmptyString Then upath &= $"{SpecialFolder}\"
-                If vp.HasValue AndAlso vp.Value Then upath &= $"Video\"
+                If Not SpecialFolder.IsEmptyString Then upath &= $"{SpecialFolder.TrimEnd("*"c).TrimEnd("\"c)}\"
+                If vp.HasValue AndAlso vp.Value AndAlso
+                   (Type = Types.Video OrElse Type = Types.m3u8 OrElse File.Extension = "mp4") AndAlso
+                   (SpecialFolder.IsEmptyString OrElse Not SpecialFolder.EndsWith("*")) Then upath &= $"Video\"
                 If Not upath.IsEmptyString Then
                     File = $"{upath.CSFilePS}{File.File}"
                     If Not PostTextFile.IsEmptyString Then
