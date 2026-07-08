@@ -27,7 +27,7 @@ Any Claude session (any model) resumes from this file — read it fully before t
 | Chunk | Target | ~Lines | Status |
 |-------|--------|--------|--------|
 | 1 | `SCrawler\API\Base` + `API\BaseObjects` + `SCrawler\Download` core; start activity-log instrumentation | 8k | **done** (2026-07-07) |
-| 2 | Top-level `SCrawler\` (settings, MainFrame plumbing); finish activity-log UI | 6.7k | pending |
+| 2 | Top-level `SCrawler\` (settings, MainFrame plumbing); finish activity-log UI | 6.7k | **done** (2026-07-07) |
 | 3 | `API\Reddit` + `API\Redgifs` + `API\Imgur` + `API\Gfycat` | 4.3k | pending |
 | 4 | `API\Instagram` + `API\TikTok` | 3.8k | pending |
 | 5 | `Download\Feed` — responsiveness/jank focus | 6.1k | pending |
@@ -67,6 +67,41 @@ Notes (no action, for later chunks):
 - `M3U8Base.Download`: `Throw ex` resets stack traces; `Cache.DisposeIfReady` in Finally relies on extension-method Nothing-tolerance; passing `ExistingCache` gets it disposed on the callee side.
 - `UserMedia.GetHashCode` built on mutable fields; event raisers swallow exceptions broadly.
 
+### Chunk 2 (2026-07-07) — top-level SCrawler + activity-log viewer UI
+
+Read in full: `MainFrame.vb`, `SettingsCLS.vb`, `MainMod.vb`, `MainFrameObjects.vb`, `UserInfo.vb`,
+`UserImage.vb`, `MyProgressExt.vb`, `UserFinder.vb`, `ListImagesLoader.vb`, `UserSearchForm.vb`,
+`LabelsKeeper.vb`, `UserBan.vb`, `ToolStripKeysButton.vb`. New file: `Download\ActivityLogForm.vb`
+(viewer for the chunk-1 ActivityLog module; "Activity log" item added to the Info menu).
+
+Bugs fixed (see *Fixes applied*): MainFrame.GetSelectedUserArray checked the loop counter instead of
+the FindIndex result (a stale selected key threw → outer Catch returned an empty list → whole selection
+silently dropped); MainFrame.RemoveUserFromList removed the user's icon at the ListView item index
+instead of the image-list index (corrupted other users' icons in picture view); UserSearchForm
+SearchResult.CompareTo returned `CompareTo() = 0` (Boolean→Integer coercion — mode sorting never worked
+and the comparer was inconsistent, likely the reason for the masking `Catch ArgumentOutOfRangeException`
+in SearchUser); UserFinder import log labeled the Skipped section "Duplicates:".
+
+Notes (no action, for later chunks / awareness):
+- `SettingsCLS.UpdateUsersList` only writes Users.xml when the list is non-empty; deleting the LAST user
+  is persisted only by `Dispose` on clean exit (crash before exit resurrects the user). `LoadUsers` wraps
+  everything in a swallow-all Catch.
+- `ListImagesLoader.Update` (non-FastProfilesLoading branch): `Task.WhenAll(...)` result is discarded, so
+  it doesn't wait — but "fixing" it to WaitAll would deadlock (tasks Invoke back to the UI thread that's
+  waiting). Also: `Thread.Abort` in InterruptUpdate, `Application.DoEvents` per item, and a masking
+  `Catch ArgumentOutOfRangeException` — this class is the main-list jank; revisit with Feed in chunk 5.
+- `ListImagesLoader.UpdateImages` "background thread" BeginInvokes the entire image loop onto the UI
+  thread (with DoEvents per item) — icon loading effectively runs on the UI thread.
+- `UserImage.GetImage` assumes the last `ResizedImages` key is the just-fitted image (closed-source
+  ordering assumption).
+- `UserFinder.Verify`: IgnoredCollections `Contains(x.ToLower)` vs `Add(x)` (original case) — mostly
+  masked by the UsersList existence clause, left alone.
+- `MyProgressExt` parameterless ctor never creates `PR_PRE` → NRE on any `*0` member if that ctor is ever
+  used (PreProgress only type-checks).
+- FALSE ALARM (do not "fix"): `MainFrame.MyMissingPosts`/`MyUserMetrics` are never assigned in SCrawler
+  code, but `FormShow` is a PersonalUtilities extension that takes `Me` ByRef and instantiates the field —
+  evidenced by the IDE0044 suppressions in GlobalSuppressions.vb.
+
 Pre-ledger work (earlier sessions, already committed to fork):
 - `Download\NetworkBreaker.vb` — new DNS-failure circuit breaker (written by Claude, reviewed).
 - `TDownloader.vb` — breaker integration + observability logging (partial review only; full review due in chunk 1).
@@ -81,8 +116,12 @@ Pre-ledger work (earlier sessions, already committed to fork):
   FeedDataLock for Files/Downloaded producers, DNS→NetworkBreaker feed + tripped-breaker pause in
   DownloadContentDefault) + ActivityLog module and full producer instrumentation.
 - `53ca6a5` — Structures.vb: saved-post path reconstruction mirrors DownloadContentDefault placement rules.
-- *(this commit)* — FeedDataLock helpers on TDownloader; converted unsynchronized consumers
+- `6af363e` — FeedDataLock helpers on TDownloader; converted unsynchronized consumers
   (DownloadedInfoForm enumerate/clear, AutoDownloader RemoveAll, ProfileSaved Files.AddRange/Sort).
+- *(this commit)* — Chunk 2: GetSelectedUserArray index fix, RemoveUserFromList image-index fix,
+  UserSearchForm comparer fix, UserFinder log label fix; new ActivityLogForm (live activity-log viewer,
+  Info menu → "Activity log": Snapshot backfill on show, EntryAdded via BeginInvoke while visible,
+  autoscroll/copy/clear, hide-on-close, disposed with MainFrame).
 
 ## Open Suspicions
 
@@ -90,7 +129,6 @@ Pre-ledger work (earlier sessions, already committed to fork):
 
 - `DownloadMissingOnly` mode skips `DownloadDataF`, leaving `UserExists` defaulted to `True` unless a module probes explicitly. Modules NOT yet audited for this: Reddit, Redgifs, Instagram, TikTok (the ones we actually use!). Check in chunks 3–4.
 - The four prior ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter) each hand-roll the existence-probe pattern — chunk 1 read `UserDataBase` and confirmed the mechanism (`EnvirDownloadSet` resets `UserExists=True` every run); a shared base hook remains an option if chunks 3–4 need the same fix again.
-- Chunk 2 must build the activity-log viewer UI: subscribe `ActivityLog.EntryAdded` (raised on producer threads — BeginInvoke to UI), backfill via `Snapshot()`; leaning dockable live-log window.
 - Chunk 5: check whether Feed code compensates for the old broken `UserMedia.New(EContainer)` path reconstruction (fixed in 53ca6a5) — a compensating hack there would now double-correct.
 
 ## PersonalUtilities Hazards (closed-source, work around only)

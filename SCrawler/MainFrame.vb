@@ -34,6 +34,8 @@ Public Class MainFrame
     Friend MyFeed As DownloadFeedForm
     Private MySearch As UserSearchForm
     Private MyUserMetrics As UsersInfoForm = Nothing
+    Private MyActivityLog As ActivityLogForm = Nothing
+    Private WithEvents BTT_ACTIVITY_LOG As ToolStripMenuItem
     Private _UFinit As Boolean = True
 #End Region
 #Region "Initializer"
@@ -57,6 +59,9 @@ Public Class MainFrame
         BTT_BUG_REPORT.Image = My.Resources.MailPic_16
         BTT_GROUPS_OTHER = New ToolStripMenuItem("Other groups", DownloadGroup.GroupImage)
         BTT_SHOW_ALL_GROUPS = New ToolStripMenuItem("Show all groups", DownloadGroup.GroupImage)
+        BTT_ACTIVITY_LOG = New ToolStripMenuItem("Activity log", My.Resources.InfoPic_32) With {
+            .ToolTipText = "Open the 'Activity log' form (live feed of what the downloader is doing right now)."}
+        If Not MENU_INFO_USER_SEARCH.Owner Is Nothing Then MENU_INFO_USER_SEARCH.Owner.Items.Add(BTT_ACTIVITY_LOG)
     End Sub
 #End Region
 #Region "Form handlers"
@@ -176,6 +181,7 @@ Public Class MainFrame
                     MySavedPosts.DisposeIfReady()
                     MySearch.DisposeIfReady()
                     MyUserMetrics.DisposeIfReady()
+                    MyActivityLog.DisposeIfReady()
                     MyView.Dispose(Settings.Design)
                     Settings.Dispose()
                 Else
@@ -482,6 +488,14 @@ CloseResume:
     End Sub
     Private Sub MENU_INFO_USER_SEARCH_Click(sender As Object, e As EventArgs) Handles MENU_INFO_USER_SEARCH.Click
         MySearch.FormShow()
+    End Sub
+    Private Sub BTT_ACTIVITY_LOG_Click(sender As Object, e As EventArgs) Handles BTT_ACTIVITY_LOG.Click
+        Try
+            If MyActivityLog Is Nothing Then MyActivityLog = New ActivityLogForm
+            If MyActivityLog.Visible Then MyActivityLog.BringToFront() Else MyActivityLog.Show()
+        Catch ex As Exception
+            ErrorsDescriber.Execute(EDP.LogMessageValue, ex, "[MainFrame.BTT_ACTIVITY_LOG_Click]")
+        End Try
     End Sub
 #End Region
     Friend Sub ShowFeed() Handles BTT_FEED.Click, BTT_TRAY_FEED_SHOW.Click
@@ -1606,7 +1620,7 @@ CloseResume:
                     For i% = 0 To .SelectedIndices.Count - 1
                         k = .Items(.SelectedIndices(i)).Name
                         indx = Settings.Users.FindIndex(Function(u) u.Key = k)
-                        If i >= 0 Then l.Add(Settings.Users(indx))
+                        If indx >= 0 Then l.Add(Settings.Users(indx))
                     Next
                     Return l
                 End If
@@ -1965,10 +1979,10 @@ ResumeDownloadingOperation:
                                           Select Case Settings.ViewMode.Value
                                               Case View.LargeIcon
                                                   ImgIndx = .LargeImageList.Images.IndexOfKey(Key)
-                                                  If ImgIndx >= 0 Then .LargeImageList.Images.RemoveAt(_Index)
+                                                  If ImgIndx >= 0 Then .LargeImageList.Images.RemoveAt(ImgIndx)
                                               Case View.SmallIcon
                                                   ImgIndx = .SmallImageList.Images.IndexOfKey(Key)
-                                                  If ImgIndx >= 0 Then .SmallImageList.Images.RemoveAt(_Index)
+                                                  If ImgIndx >= 0 Then .SmallImageList.Images.RemoveAt(ImgIndx)
                                           End Select
                                       End If
                                   End If

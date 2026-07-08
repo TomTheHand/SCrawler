@@ -532,6 +532,9 @@
     <Compile Include="PluginsEnvironment\Hosts\SettingsHost.vb" />
     <Compile Include="SettingsCLS.vb" />
     <Compile Include="Download\ActivityLog.vb" />
+    <Compile Include="Download\ActivityLogForm.vb">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Download\NetworkBreaker.vb" />
     <Compile Include="Download\TDownloader.vb" />
     <Compile Include="SiteResources.Designer.vb">

@@ -189,7 +189,7 @@ Friend Class UserFinder : Implements IDisposable
                     End If
                     If Skipped.Count > 0 Then
                         t.AppendLine(vbNewLine.StringDup(2))
-                        t.AppendLine($"Duplicates:{vbNewLine}{Skipped.Select(Function(u) u.User.File.ToString).ListToString(vbNewLine)}")
+                        t.AppendLine($"Skipped:{vbNewLine}{Skipped.Select(Function(u) u.User.File.ToString).ListToString(vbNewLine)}")
                     End If
                     If NotRecognized.Count > 0 Then
                         t.AppendLine(vbNewLine.StringDup(2))

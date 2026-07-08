@@ -38,7 +38,7 @@ Friend Class UserSearchForm
             If CInt(Mode).CompareTo(CInt(Other.Mode)) = 0 Then
                 Return IsCollection.CompareTo(Other.IsCollection)
             Else
-                Return CInt(Mode).CompareTo(CInt(Other.Mode)) = 0
+                Return CInt(Mode).CompareTo(CInt(Other.Mode))
             End If
         End Function
         Public Overrides Function Equals(ByVal Obj As Object) As Boolean
