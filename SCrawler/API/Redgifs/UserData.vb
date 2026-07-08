@@ -146,6 +146,12 @@ Namespace API.RedGifs
         End Function
 #End Region
 #Region "ReparseMissing"
+        ' Give-up budget — same mechanism as Reddit.UserData.MaxReparseMissingAttempts.
+        ' u.Attempts accumulates across runs (persisted via _ForceSaveUserData): incremented here
+        ' when the gif re-fetch fails or returns no usable media, and by DownloadContentDefault on
+        ' file download failures. Without a budget, a permanently deleted gif is re-fetched on
+        ' every run forever.
+        Private Const MaxReparseMissingAttempts As Integer = 10
         Protected Overrides Sub ReparseMissing(ByVal Token As CancellationToken)
             Dim rList As New List(Of Integer)
             Try
@@ -197,23 +203,53 @@ Namespace API.RedGifs
                             ThrowAny(Token)
                             u = _ContentList(i)
                             If Not u.Post.ID.IsEmptyString Then
-                                ' Strip any stale backslash from stored IDs (literal or percent-encoded).
-                                url = String.Format(PostDataUrl, Uri.UnescapeDataString(u.Post.ID).Replace("\", String.Empty).ToLower)
-                                Try
-                                    r = Responser.GetResponse(url)
-                                    If Not r.IsEmptyString Then
-                                        j = JsonDocument.Parse(r)
-                                        If Not j Is Nothing Then
-                                            If If(j("gif")?.Count, 0) > 0 Then
-                                                ObtainMedia(j("gif"), u.Post.ID,, u.Post.Date, UStates.Missing, u.Attempts)
-                                                rList.Add(i)
+                                If u.Attempts >= MaxReparseMissingAttempts Then
+                                    ' Retry budget exhausted — remove from the missing list permanently.
+                                    ' The post ID stays in _TempPostsList (persisted to MyFilePosts) so it
+                                    ' won't be re-discovered as "new" on the next full scan.
+                                    MyMainLOG = $"{ToStringForLog()}: ReparseMissing — gif [{u.Post.ID}] " &
+                                                $"gave up after {u.Attempts} failed attempt(s); removing from missing list."
+                                    rList.Add(i)
+                                    _ForceSaveUserData = True
+                                Else
+                                    ' Strip any stale backslash from stored IDs (literal or percent-encoded).
+                                    url = String.Format(PostDataUrl, Uri.UnescapeDataString(u.Post.ID).Replace("\", String.Empty).ToLower)
+                                    Try
+                                        Dim parsedOk As Boolean = False
+                                        r = Responser.GetResponse(url)
+                                        If Not r.IsEmptyString Then
+                                            j = JsonDocument.Parse(r)
+                                            If Not j Is Nothing Then
+                                                If If(j("gif")?.Count, 0) > 0 Then
+                                                    ObtainMedia(j("gif"), u.Post.ID,, u.Post.Date, UStates.Missing, u.Attempts)
+                                                    rList.Add(i)
+                                                    parsedOk = True
+                                                End If
                                             End If
                                         End If
-                                    End If
-                                Catch down_ex As Exception
-                                    u.Attempts += 1
-                                    _ContentList(i) = u
-                                End Try
+                                        If Not parsedOk Then
+                                            ' Response empty or no usable "gif" node — count the attempt so the
+                                            ' item eventually gives up (previously these paths were silent no-ops
+                                            ' and the item stayed missing forever).
+                                            u.Attempts += 1
+                                            _ContentList(i) = u
+                                            _ForceSaveUserData = True
+                                        End If
+                                    Catch down_ex As Exception When Not TypeOf down_ex Is OperationCanceledException
+                                        Dim sc As HttpStatusCode = Responser.StatusCode
+                                        If sc = DataGone Or sc = HttpStatusCode.NotFound Then
+                                            ' RedGifs itself confirms the content is gone (410/404) — no point
+                                            ' waiting out the Attempts budget.
+                                            MyMainLOG = $"{ToStringForLog()}: ReparseMissing — gif [{u.Post.ID}] " &
+                                                        $"gone (HTTP {CInt(sc)}); removing from missing list."
+                                            rList.Add(i)
+                                        Else
+                                            u.Attempts += 1
+                                            _ContentList(i) = u
+                                        End If
+                                        _ForceSaveUserData = True
+                                    End Try
+                                End If
                             Else
                                 rList.Add(i)
                             End If
@@ -225,7 +261,11 @@ Namespace API.RedGifs
                 ProcessException(ex, Token, $"missing data downloading error",, False)
             Finally
                 If Not Disposed And rList.Count > 0 Then
-                    For i% = rList.Count - 1 To 0 Step -1 : _ContentList.RemoveAt(rList(i)) : Next
+                    ' Skip any out-of-range index (list may have shrunk if the Try block exited early)
+                    ' rather than crashing the Finally block.
+                    For i% = rList.Count - 1 To 0 Step -1
+                        If rList(i) < _ContentList.Count Then _ContentList.RemoveAt(rList(i))
+                    Next
                 End If
             End Try
         End Sub

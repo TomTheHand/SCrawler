@@ -28,7 +28,7 @@ Any Claude session (any model) resumes from this file — read it fully before t
 |-------|--------|--------|--------|
 | 1 | `SCrawler\API\Base` + `API\BaseObjects` + `SCrawler\Download` core; start activity-log instrumentation | 8k | **done** (2026-07-07) |
 | 2 | Top-level `SCrawler\` (settings, MainFrame plumbing); finish activity-log UI | 6.7k | **done** (2026-07-07) |
-| 3 | `API\Reddit` + `API\Redgifs` + `API\Imgur` + `API\Gfycat` | 4.3k | pending |
+| 3 | `API\Reddit` + `API\Redgifs` + `API\Imgur` + `API\Gfycat` | 4.3k | **done** (2026-07-07) |
 | 4 | `API\Instagram` + `API\TikTok` | 3.8k | pending |
 | 5 | `Download\Feed` — responsiveness/jank focus | 6.1k | pending |
 | 6 | Ledger sweep: resolve all remaining Open Suspicions | — | pending |
@@ -102,6 +102,40 @@ Notes (no action, for later chunks / awareness):
   code, but `FormShow` is a PersonalUtilities extension that takes `Me` ByRef and instantiates the field —
   evidenced by the IDE0044 suppressions in GlobalSuppressions.vb.
 
+### Chunk 3 (2026-07-07) — API\Reddit + API\Redgifs + API\Imgur + API\Gfycat
+
+Read in full: `Reddit\UserData.vb`, `Reddit\SiteSettings.vb`, `Reddit\M3U8.vb`, `Reddit\Declarations.vb`,
+`Redgifs\UserData.vb`, `Redgifs\SiteSettings.vb`, `Redgifs\Declarations.vb`, `Imgur\Envir.vb`,
+`Gfycat\Envir.vb`. Skipped per scope (Channels feature unused): `Reddit\Channel.vb`,
+`Reddit\ChannelsCollection.vb`, `Reddit\IChannelLimits.vb`, `Reddit\IRedditView.vb`,
+`Reddit\RedditViewSettingsForm*.vb`.
+
+Bug fixed (see *Fixes applied*): Redgifs `ReparseMissing` had no give-up budget — `u.Attempts`
+incremented on failure but was never checked, never persisted (`_ForceSaveUserData` never set), and
+410/404 (RedGifs' own "gone for good" signal) wasn't treated as permanent; a deleted gif was
+re-fetched every run forever. Also: parse-succeeded-but-no-"gif"-node was a silent no-op (no attempt
+counted). Now mirrors Reddit: `MaxReparseMissingAttempts = 10` budget, 410/404 short-circuit, all
+failure paths count an attempt + force save, Finally bounds guard on rList removal.
+
+Notes (no action, for awareness):
+- Reddit `ReparseVideo` ~1038: `Const v2 = UTypes.VideoPre + UTypes.m3u8` = 110 matches no enum value —
+  the `p.Type = v2` conditions are dead code (m3u8 items download via `DownloadM3U8` anyway).
+- Reddit `ReparseVideo` ~1083: when the reparse fetch fails (empty response), the slot keeps an empty
+  `New UserMedia` (Type=Undefined, URL="") instead of being removed — relies on downstream skipping
+  empty URLs. Upstream behaviour, left alone.
+- Reddit `DownloadDataChannel` catch ~616: `ElseIf errValue = 429 And round = 0` can never be true
+  (round is incremented before the Try) — dead branch; also DownloadingException throws on 429 rather
+  than returning it. Left alone.
+- Reddit `M3U8.MergeFiles`: in the video-only path, if `IndexReindex` returned a conflict-renamed `f`
+  and the move succeeds, `OutFile` is NOT updated to `f` — the returned path then points at the
+  pre-existing conflicting file. Edge case; needs IndexReindex semantics (closed-source) to confirm.
+- Redgifs `GetDataFromUrlId` catch: `Responser.Client.StatusCode` at the 401 check would NRE if the
+  `Responser` parameter were Nothing — all current callers pass non-Nothing.
+- Redgifs `SiteSettings._TokenUpdating` spin-wait is not a real lock (two threads can both pass the
+  While) — worst case is a redundant token refresh; benign.
+- Reddit `SiteSettings.UpdateToken` curl path embeds credentials unquoted in the curl argument string —
+  breaks (only) if a password contains `"`; note if token refresh ever fails mysteriously.
+
 Pre-ledger work (earlier sessions, already committed to fork):
 - `Download\NetworkBreaker.vb` — new DNS-failure circuit breaker (written by Claude, reviewed).
 - `TDownloader.vb` — breaker integration + observability logging (partial review only; full review due in chunk 1).
@@ -118,17 +152,20 @@ Pre-ledger work (earlier sessions, already committed to fork):
 - `53ca6a5` — Structures.vb: saved-post path reconstruction mirrors DownloadContentDefault placement rules.
 - `6af363e` — FeedDataLock helpers on TDownloader; converted unsynchronized consumers
   (DownloadedInfoForm enumerate/clear, AutoDownloader RemoveAll, ProfileSaved Files.AddRange/Sort).
-- *(this commit)* — Chunk 2: GetSelectedUserArray index fix, RemoveUserFromList image-index fix,
+- `b658aa2` — Chunk 2: GetSelectedUserArray index fix, RemoveUserFromList image-index fix,
   UserSearchForm comparer fix, UserFinder log label fix; new ActivityLogForm (live activity-log viewer,
   Info menu → "Activity log": Snapshot backfill on show, EntryAdded via BeginInvoke while visible,
   autoscroll/copy/clear, hide-on-close, disposed with MainFrame).
+- *(this commit)* — Chunk 3: Redgifs ReparseMissing give-up budget (MaxReparseMissingAttempts=10,
+  410/404 permanent-gone short-circuit, attempt counting on all failure paths, _ForceSaveUserData
+  persistence, Finally bounds guard) — mirrors the Reddit mechanism.
 
 ## Open Suspicions
 
 *(one half of a cross-module interaction seen; verify when the other half is read)*
 
-- `DownloadMissingOnly` mode skips `DownloadDataF`, leaving `UserExists` defaulted to `True` unless a module probes explicitly. Modules NOT yet audited for this: Reddit, Redgifs, Instagram, TikTok (the ones we actually use!). Check in chunks 3–4.
-- The four prior ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter) each hand-roll the existence-probe pattern — chunk 1 read `UserDataBase` and confirmed the mechanism (`EnvirDownloadSet` resets `UserExists=True` every run); a shared base hook remains an option if chunks 3–4 need the same fix again.
+- `DownloadMissingOnly` mode skips `DownloadDataF`, leaving `UserExists` defaulted to `True` unless a module probes explicitly. Chunk 3 confirmed Reddit AND Redgifs already carry the existence probe (added in pre-ledger sessions). Remaining to audit: Instagram, TikTok — chunk 4.
+- The prior ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter/Reddit/Redgifs) each hand-roll the existence-probe pattern — chunk 1 read `UserDataBase` and confirmed the mechanism (`EnvirDownloadSet` resets `UserExists=True` every run); a shared base hook remains an option if chunk 4 needs the same fix again.
 - Chunk 5: check whether Feed code compensates for the old broken `UserMedia.New(EContainer)` path reconstruction (fixed in 53ca6a5) — a compensating hack there would now double-correct.
 
 ## PersonalUtilities Hazards (closed-source, work around only)
