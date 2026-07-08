@@ -399,6 +399,7 @@ Namespace DownloadObjects
         End Sub
         Private Sub Feed_FeedRemoved(ByVal Source As FeedSpecialCollection, ByVal Feed As FeedSpecial)
             DownloadFeedForm.Feed_FeedRemoved(BTT_FEED_ADD_SPEC, CONTEXT_DATA, Feed)
+            DownloadFeedForm.Feed_FeedRemoved(BTT_FEED_ADD_SPEC_REMOVE, CONTEXT_DATA, Feed)
             DownloadFeedForm.Feed_FeedRemoved(BTT_FEED_REMOVE_SPEC, CONTEXT_DATA, Feed)
         End Sub
         Private Sub Feed_SPEC_ADD(ByVal Source As ToolStripMenuItem, ByVal e As EventArgs)

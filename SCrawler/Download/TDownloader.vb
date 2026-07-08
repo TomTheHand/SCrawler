@@ -333,6 +333,20 @@ Namespace DownloadObjects
         Friend Sub FilesSort()
             SyncLock FeedDataLock : Files.Sort() : End SyncLock
         End Sub
+        ''' <summary>Copy of <see cref="Files"/> taken under <see cref="FeedDataLock"/>; safe to enumerate on any thread.</summary>
+        Friend Function FilesSnapshot() As List(Of UserMediaD)
+            SyncLock FeedDataLock : Return New List(Of UserMediaD)(Files) : End SyncLock
+        End Function
+        Friend Function FilesRemoveAll(ByVal Match As Predicate(Of UserMediaD)) As Integer
+            SyncLock FeedDataLock : Return Files.RemoveAll(Match) : End SyncLock
+        End Function
+        Friend Sub FilesClear()
+            SyncLock FeedDataLock : Files.Clear() : End SyncLock
+        End Sub
+        ''' <summary>Runs <paramref name="Action"/> against <see cref="Files"/> under <see cref="FeedDataLock"/> (for compound find/update operations).</summary>
+        Friend Sub FilesLocked(ByVal Action As Action(Of List(Of UserMediaD)))
+            SyncLock FeedDataLock : Action(Files) : End SyncLock
+        End Sub
         Private ReadOnly NProv As IFormatProvider
 #End Region
 #Region "Working, Count"

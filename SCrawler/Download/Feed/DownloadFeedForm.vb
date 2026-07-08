@@ -126,7 +126,7 @@ Namespace DownloadObjects
                                      End If
                                  End Sub)
                     ElseIf FeedMode = FeedModes.Current And Not OverriddenNames.ListExists And IsAddAndRemove Then
-                        dataRemoved = Downloader.Files.ListDisposeRemove(MediaList) > 0
+                        Downloader.FilesLocked(Sub(dFiles) dataRemoved = dFiles.ListDisposeRemove(MediaList) > 0)
                         'Downloader.FilesSave()
                     Else
                         Exit Sub
@@ -360,6 +360,7 @@ Namespace DownloadObjects
             Feed_FeedRemoved(BTT_LOAD_SPEC, Feed)
             Feed_FeedRemoved(BTT_FEED_ADD_SPEC, Feed)
             Feed_FeedRemoved(BTT_FEED_ADD_T, Feed)
+            Feed_FeedRemoved(BTT_FEED_ADD_SPEC_REMOVE, Feed)
             Feed_FeedRemoved(BTT_FEED_REMOVE_SPEC, Feed)
             Feed_FeedRemoved(BTT_FEED_DELETE_SPEC, Feed)
             Feed_FeedRemoved(BTT_FEED_CLEAR_SPEC, Feed)
@@ -507,10 +508,10 @@ Namespace DownloadObjects
             If RememberPosition Then rIndx = MyRange.CurrentIndex
             If RefillDataList Then
                 If Not IsSubscription Then
-                    Try : Downloader.Files.RemoveAll(FileNotExist) : Catch : End Try
+                    Try : Downloader.FilesRemoveAll(FileNotExist) : Catch : End Try
                 End If
                 DataList.Clear()
-                DataList.ListAddList(Downloader.Files.Where(If(IsSubscription, FilterSubscriptions, FilterUsers)), LAP.NotContainsOnly)
+                DataList.ListAddList(Downloader.FilesSnapshot().Where(If(IsSubscription, FilterSubscriptions, FilterUsers)), LAP.NotContainsOnly)
             End If
             If Not _RefillListIgnoreFilter And Not CurrentFilter Is Nothing And DataList.Count > 0 Then DataList.RemoveAll(DataFilterPredicateInv)
             If _RefillListProcessTable Then
@@ -810,28 +811,32 @@ Namespace DownloadObjects
                                             End If
                                             If updateFileLocations Then
                                                 If indxR = 0 Then filesReplace.Add(New KeyValuePair(Of SFile, SFile)(ff, df))
-                                                indx = Downloader.Files.FindIndex(finder)
-                                                If indx >= 0 Then
-                                                    mm = Downloader.Files(indx)
-                                                    __user = mm.UserInfo
-                                                    mm_data = mm.Data
-                                                    If indxR = 0 Then
-                                                        mm_data.File = df
-                                                        ffInit = df
-                                                    Else
-                                                        mm_data.PostTextFile = df
-                                                        mm_data.PostTextFileSpecialFolder = False
-                                                    End If
-                                                    __isSavedPosts = mm.IsSavedPosts And moveOptions.ReplaceUserProfile_Profile Is Nothing
-                                                    postUrl = mm.PostUrl(True)
-                                                    mm = New UserMediaD(mm_data, If(moveOptions.ReplaceUserProfile_Profile, mm.User), mm.Session, mm.Date) With {
-                                                        .IsSavedPosts = __isSavedPosts,
-                                                        .PostUrl = postUrl
-                                                    }
-                                                    If __isSavedPosts Then mm.UserInfo = __user
-                                                    Downloader.Files(indx) = mm
-                                                    downloaderFilesUpdated = True
-                                                End If
+                                                Dim __indxR As Byte = indxR
+                                                Downloader.FilesLocked(
+                                                    Sub(ByVal dFiles As List(Of UserMediaD))
+                                                        indx = dFiles.FindIndex(finder)
+                                                        If indx >= 0 Then
+                                                            mm = dFiles(indx)
+                                                            __user = mm.UserInfo
+                                                            mm_data = mm.Data
+                                                            If __indxR = 0 Then
+                                                                mm_data.File = df
+                                                                ffInit = df
+                                                            Else
+                                                                mm_data.PostTextFile = df
+                                                                mm_data.PostTextFileSpecialFolder = False
+                                                            End If
+                                                            __isSavedPosts = mm.IsSavedPosts And moveOptions.ReplaceUserProfile_Profile Is Nothing
+                                                            postUrl = mm.PostUrl(True)
+                                                            mm = New UserMediaD(mm_data, If(moveOptions.ReplaceUserProfile_Profile, mm.User), mm.Session, mm.Date) With {
+                                                                .IsSavedPosts = __isSavedPosts,
+                                                                .PostUrl = postUrl
+                                                            }
+                                                            If __isSavedPosts Then mm.UserInfo = __user
+                                                            dFiles(indx) = mm
+                                                            downloaderFilesUpdated = True
+                                                        End If
+                                                    End Sub)
                                             End If
                                         End If
                                     End If
@@ -1288,7 +1293,7 @@ Namespace DownloadObjects
         End Sub
         Private Sub BTT_CLEAR_DAILY_Click(sender As Object, e As EventArgs) Handles BTT_CLEAR_DAILY.Click
             If MsgBoxE({"Are you sure you want to clear this session data?", "Clear session"}, vbExclamation,,, {"Process", "Cancel"}) = 0 Then
-                Downloader.Files.Clear()
+                Downloader.FilesClear()
                 ClearTable()
                 RefillList()
             End If
@@ -1856,9 +1861,6 @@ Namespace DownloadObjects
                                        If TP_DATA.Controls.Count > 0 Then
                                            For Each cnt As Control In TP_DATA.Controls : cnt.Dispose() : Next
                                            TP_DATA.Controls.Clear()
-                                           GC.Collect()
-                                           GC.WaitForPendingFinalizers()
-                                           GC.WaitForFullGCComplete()
                                        End If
                                    End Sub)
         End Sub

@@ -30,7 +30,7 @@ Any Claude session (any model) resumes from this file — read it fully before t
 | 2 | Top-level `SCrawler\` (settings, MainFrame plumbing); finish activity-log UI | 6.7k | **done** (2026-07-07) |
 | 3 | `API\Reddit` + `API\Redgifs` + `API\Imgur` + `API\Gfycat` | 4.3k | **done** (2026-07-07) |
 | 4 | `API\Instagram` + `API\TikTok` | 3.8k | **done** (2026-07-07) |
-| 5 | `Download\Feed` — responsiveness/jank focus | 6.1k | pending |
+| 5 | `Download\Feed` — responsiveness/jank focus | 6.1k | **done** (2026-07-08) |
 | 6 | Ledger sweep: resolve all remaining Open Suspicions | — | pending |
 
 ## Reviewed
@@ -56,7 +56,7 @@ reconstruction diverged from downloader placement rules (untrimmed `*` marker, u
 
 Notes (no action, for later chunks):
 - `TDownloader.FilesSave` spin-waits (`Thread.Sleep(100)` loop) — Feed jank candidate (chunk 5).
-- Feed reads `Downloader.Files` without `FeedDataLock` — readers still unsynchronized (chunk 5).
+- ~~Feed reads `Downloader.Files` without `FeedDataLock` — readers still unsynchronized (chunk 5).~~ **Converted in chunk 5.**
 - Unavailable-host users go to `Keys` but not `KeysSkipped` → removed from `_Job.Items` without downloading.
 - One host hitting its task limit exits the whole batch loop (`Exit For` in TDownloader).
 - Totals recount in UserDataBase (~1375): pictures mask top-dir-only + includes webm; videos recursive — asymmetric, author intent unclear.
@@ -189,6 +189,57 @@ Notes (no action, for awareness):
   checks the prefixed form against the persisted file, but the two ID namespaces coexist — don't
   "unify" them.
 
+### Chunk 5 (2026-07-08) — Download\Feed (responsiveness + correctness)
+
+Read in full: `DownloadFeedForm.vb`, `FeedMedia.vb`, `FeedSpecial.vb`, `FeedSpecialCollection.vb`,
+`FeedVideo.vb`, `FeedFilter.vb`, `FeedFilterCollection.vb`, `FeedFilterForm.vb`, `FeedCopyToForm.vb`,
+`FeedView.vb`. (FeedFilterForm/FeedCopyToForm: clean.)
+
+Bugs fixed (see *Fixes applied*):
+- **Deleted special feeds became zombies.** Three interlocking defects: (1) both `Feed_FeedRemoved`
+  fan-out handlers (DownloadFeedForm + FeedMedia context menu) omitted `BTT_FEED_ADD_SPEC_REMOVE` —
+  the author's classic "handles the list but omits the adjacent entry" pattern, since `Feed_FeedAdded`
+  populates it in both — so deleting a feed left a live item in both "Add & remove" dropdowns;
+  (2) `FeedSpecialCollection.Delete` disposed the feed via a `FindIndex` that always returned -1
+  (the `FeedDeleted` event, raised inside `FeedSpecial.Delete`, had already removed the feed from
+  `Feeds` by the time `FindIndex` ran) — dead code, so no delete path ever disposed a feed, and direct
+  `f.Delete()` callers (Feed_SPEC_DELETE, BTT_FEED_DELETE_SPEC_Click) bypassed `Collection.Delete`
+  entirely; (3) `FeedSpecialCollection.Add` and the `Favorite` factory never attached the
+  `FeedDeleted` handler that `Load` attaches — a feed created during the session never notified the
+  collection at all when deleted. Since `FeedSpecial.File` lazily regenerates its path from `Name`,
+  clicking the stale menu item resurrected the deleted feed's XML on disk. Fix: dispose (non-favorite)
+  feeds centrally in `Feeds_FeedDeleted` (covers every delete path), simplify `Collection.Delete`,
+  attach the handler in `Add`/`Favorite`, and add the missing dropdown to both removal fan-outs.
+- **Blocking full GC on the UI thread on every page flip**: `ClearTable` ran
+  `GC.Collect + WaitForPendingFinalizers + WaitForFullGCComplete` inside `ControlInvoke(TP_DATA, …)`
+  each time the page changed — a large chunk of the per-page-flip freeze. Removed.
+- **A full LibVLC engine per video tile, never disposed**: `FeedVideo.New` did
+  `New MediaPlayer(New Media(New LibVLC(...), …))` — native library init per tile on the UI thread,
+  and neither the LibVLC nor the Media was ever disposed (only the MediaPlayer). Now one shared
+  `Lazy(Of LibVLC)` engine for all tiles; the `Media` is kept in a field and disposed with the tile.
+- **Feed readers of the shared `Downloader.Files` list were unsynchronized** (the chunk-1 note):
+  converted all DownloadFeedForm sites to the FeedDataLock helpers — new TDownloader helpers
+  `FilesSnapshot/FilesRemoveAll/FilesClear/FilesLocked`; RefillList now filters a snapshot,
+  FeedRemoveCheckedMedia/BTT_CLEAR_DAILY/MoveCopyFiles' find-and-replace run under the lock.
+
+Notes (no action / report-only):
+- Feed jank root cause #2 (not fixed — needs a redesign decision): `FeedMedia.New` does ALL tile work
+  synchronously on the UI thread per page flip — full image decode + optional WebP conversion,
+  text→bitmap rendering, subscription HTTP `GetWebFile`, and (when UseM3U8) a synchronous
+  `FFMPEG.TakeSnapshot` per video tile in `FeedVideo.New`. Async/placeholder loading is the real fix;
+  raised with the user as a design question.
+- `MyRange_IndexChanged` Finally block calls `Activate() : Focus()` — the Feed steals focus on every
+  page change (including endless-scroll auto-flips). Report note.
+- `FeedMedia` Dispose unsubscribes `Settings.Feeds` events only if `FeedShowSpecialFeedsMediaItem` is
+  still true — toggling the setting off while tiles are alive leaks handlers (collection holds dead
+  tiles until the swallow-all raisers eat their exceptions). Minor.
+- `FeedFilter.Sites` is saved in filter XML but only narrows the user-picker list in FeedFilterForm —
+  `DataFilterPredicate` checks Types/Users only, so a Sites-only filter filters nothing. Usability quirk.
+- `FeedSpecialCollection.UpdateUsers` reads `Downloader.Files.Count` without the lock — benign
+  (approximate count check).
+- `FeedSpecial.RemoveNotExist` runs once per feed lifetime (`_NotExistRemoved` flag) — missing-file
+  purge only happens on the first load of a special feed per app run. Author intent, left alone.
+
 Pre-ledger work (earlier sessions, already committed to fork):
 - `Download\NetworkBreaker.vb` — new DNS-failure circuit breaker (written by Claude, reviewed).
 - `TDownloader.vb` — breaker integration + observability logging (partial review only; full review due in chunk 1).
@@ -212,11 +263,18 @@ Pre-ledger work (earlier sessions, already committed to fork):
 - `cf7235c` — Chunk 3: Redgifs ReparseMissing give-up budget (MaxReparseMissingAttempts=10,
   410/404 permanent-gone short-circuit, attempt counting on all failure paths, _ForceSaveUserData
   persistence, Finally bounds guard) — mirrors the Reddit mechanism.
-- *(this commit)* — Chunk 4: Instagram width/height copy-paste in ObtainMedia_SetReelsFunc; TikTok
+- `ea8ca84` — Chunk 4: Instagram width/height copy-paste in ObtainMedia_SetReelsFunc; TikTok
   repost createTime read from document root instead of post item; TikTok ReparseMissing overhaul
   (Missing-state stamping so DownloadMissingOnly doesn't discard replacements while deleting the
   originals, MaxReparseMissingAttempts=10 give-up budget, per-post success tracking for multi-image
   sibling removal).
+- *(this commit)* — Chunk 5: zombie special feeds (missing BTT_FEED_ADD_SPEC_REMOVE in both
+  Feed_FeedRemoved fan-outs, centralized feed disposal in Feeds_FeedDeleted, FeedDeleted handler
+  attached in Collection.Add/Favorite, dead FindIndex/Dispose block removed from Collection.Delete);
+  removed blocking full GC from ClearTable (per page flip, UI thread); shared Lazy LibVLC engine +
+  Media disposal in FeedVideo (was: one never-disposed native engine per video tile); Feed readers of
+  Downloader.Files converted to FeedDataLock via new TDownloader helpers
+  FilesSnapshot/FilesRemoveAll/FilesClear/FilesLocked.
 
 ## Open Suspicions
 
@@ -224,7 +282,7 @@ Pre-ledger work (earlier sessions, already committed to fork):
 
 - ~~`DownloadMissingOnly`/`UserExists` audit~~ **RESOLVED (chunk 4)**: Reddit + Redgifs carry the probe; TikTok can't (no UserExists mechanism — attempts budget bounds it instead); Instagram is moot (no ReparseMissing override at all — see chunk 4 notes; possible user-approved feature).
 - The ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter/Reddit/Redgifs) each hand-roll the existence-probe pattern; a shared base hook remains a chunk-6 refactor option, but no NEW site needed the probe in chunk 4, so pressure is low.
-- Chunk 5: check whether Feed code compensates for the old broken `UserMedia.New(EContainer)` path reconstruction (fixed in 53ca6a5) — a compensating hack there would now double-correct.
+- ~~Chunk 5: check whether Feed code compensates for the old broken `UserMedia.New(EContainer)` path reconstruction (fixed in 53ca6a5)~~ **RESOLVED (chunk 5): no double-correction** — the only compensation is `FeedMedia.FileCheckSpecialFolders`, gated by `If Not File.Exists`: when the 53ca6a5 reconstruction is right it never runs; when the file is genuinely missing, appending another folder still yields a nonexistent path and the tile is discarded exactly as before. Harmless legacy fallback for pre-fix session XMLs; left in place.
 
 ## PersonalUtilities Hazards (closed-source, work around only)
 

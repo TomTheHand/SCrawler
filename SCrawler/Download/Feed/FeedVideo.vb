@@ -15,7 +15,10 @@ Imports VLCState = LibVLCSharp.Shared.VLCState
 Namespace DownloadObjects
     <ToolboxItem(False), DesignTimeVisible(False)>
     Public Class FeedVideo
+        ''' <summary>Shared VLC engine: creating a <see cref="LibVLC"/> instance per tile is very expensive (native library init) and they were never disposed.</summary>
+        Private Shared ReadOnly VlcEngine As New Lazy(Of LibVLC)(Function() New LibVLC(enableDebugLogs:=False), True)
         Private WithEvents MediaPlayer As MediaPlayer
+        Private MyMedia As Media
         Private ReadOnly TimeChange As Action = Sub()
                                                     If _Disposed Then Exit Sub
                                                     Dim v# = DivideWithZeroChecking(MediaPlayer.Time, MediaPlayer.Length) * 10
@@ -46,11 +49,8 @@ Namespace DownloadObjects
             InitializeComponent()
             Try
                 MediaFile = File
-                Dim debugLogs As Boolean = False
-                '#If DEBUG Then
-                '            debugLogs = True
-                '#End If
-                MediaPlayer = New MediaPlayer(New Media(New LibVLC(enableDebugLogs:=debugLogs), New Uri(File.ToString)))
+                MyMedia = New Media(VlcEngine.Value, New Uri(File.ToString))
+                MediaPlayer = New MediaPlayer(MyMedia)
                 MyVideo.MediaPlayer = MediaPlayer
                 TR_VOLUME.Value = MediaPlayer.Volume / 10
                 If Settings.UseM3U8 Then
@@ -79,6 +79,7 @@ Namespace DownloadObjects
         Private Sub FeedVideo_Disposed(sender As Object, e As EventArgs) Handles Me.Disposed
             _Disposed = True
             If Not MediaPlayer Is Nothing Then MediaPlayer.Dispose()
+            If Not MyMedia Is Nothing Then MyMedia.Dispose()
             If Not MyImage Is Nothing Then MyImage.Dispose()
         End Sub
         Private Async Sub BTT_PLAY_Click(sender As Object, e As EventArgs) Handles BTT_PLAY.Click

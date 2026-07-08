@@ -72,6 +72,7 @@ Namespace DownloadObjects
             Get
                 If _Favorite Is Nothing Then
                     _Favorite = FeedSpecial.CreateFavorite
+                    AddHandler _Favorite.FeedDeleted, AddressOf Feeds_FeedDeleted
                     _Favorite.Load()
                     Feeds.Add(_Favorite)
                     Feeds.Sort(ComparerFeeds)
@@ -117,7 +118,10 @@ Namespace DownloadObjects
         End Sub
         Private Sub Feeds_FeedDeleted(ByVal Source As FeedSpecialCollection, ByVal Feed As FeedSpecial)
             RaiseEvent FeedRemoved(Me, Feed)
-            If Count > 0 And Not Feed Is Nothing Then Feeds.Remove(Feed)
+            If Not Feed Is Nothing Then
+                If Count > 0 Then Feeds.Remove(Feed)
+                If Not Feed.IsFavorite Then Feed.Dispose()
+            End If
         End Sub
 #End Region
 #Region "ChooseFeeds"
@@ -181,12 +185,14 @@ Namespace DownloadObjects
             If Not Name.IsEmptyString Then
                 If Count = 0 Then
                     Feeds.Add(FeedSpecial.CreateSpecial(Name))
+                    AddHandler Feeds.Last.FeedDeleted, AddressOf Feeds_FeedDeleted
                     Feeds.Last.Save()
                     i = Count - 1
                 Else
                     i = IndexOf(Name)
                     If i = -1 Then
                         Feeds.Add(FeedSpecial.CreateSpecial(Name))
+                        AddHandler Feeds.Last.FeedDeleted, AddressOf Feeds_FeedDeleted
                         Feeds.Last.Save()
                         i = Count - 1
                     End If
@@ -204,17 +210,11 @@ Namespace DownloadObjects
             Dim i% = Feeds.IndexOf(Item)
             If i >= 0 Then
                 With Feeds(i)
-                    Dim name$ = .Name
                     If .IsFavorite Then
                         result = .Clear
                     Else
+                        'FeedSpecial.Delete raises FeedDeleted; Feeds_FeedDeleted removes the feed from the collection and disposes it
                         result = .Delete
-                        i = -1
-                        If Feeds.Count > 0 Then i = Feeds.FindIndex(Function(f) f.Name = name And Not f.IsFavorite)
-                        If result And i >= 0 Then
-                            .Dispose()
-                            Feeds.RemoveAt(i)
-                        End If
                     End If
                 End With
             End If
