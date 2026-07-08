@@ -1126,7 +1126,7 @@ NextPageBlock:
             ObtainMedia_SizeFuncPic = Function(ByVal ss As EContainer) As Sizes
                                           If ss.Value("url").IsEmptyString Then
                                               Return New Sizes("----", "")
-                                          ElseIf Not ss.Value("width").IsEmptyString Or Not ss.Value("width").IsEmptyString Then
+                                          ElseIf Not ss.Value("width").IsEmptyString Or Not ss.Value("height").IsEmptyString Then
                                               Return New Sizes(CInt(AConvert(Of Integer)(ss.Value("width"), 0)) +
                                                                CInt(AConvert(Of Integer)(ss.Value("height"), 0)), ss.Value("url"))
                                           Else

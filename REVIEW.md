@@ -29,7 +29,7 @@ Any Claude session (any model) resumes from this file — read it fully before t
 | 1 | `SCrawler\API\Base` + `API\BaseObjects` + `SCrawler\Download` core; start activity-log instrumentation | 8k | **done** (2026-07-07) |
 | 2 | Top-level `SCrawler\` (settings, MainFrame plumbing); finish activity-log UI | 6.7k | **done** (2026-07-07) |
 | 3 | `API\Reddit` + `API\Redgifs` + `API\Imgur` + `API\Gfycat` | 4.3k | **done** (2026-07-07) |
-| 4 | `API\Instagram` + `API\TikTok` | 3.8k | pending |
+| 4 | `API\Instagram` + `API\TikTok` | 3.8k | **done** (2026-07-07) |
 | 5 | `Download\Feed` — responsiveness/jank focus | 6.1k | pending |
 | 6 | Ledger sweep: resolve all remaining Open Suspicions | — | pending |
 
@@ -136,6 +136,59 @@ Notes (no action, for awareness):
 - Reddit `SiteSettings.UpdateToken` curl path embeds credentials unquoted in the curl argument string —
   breaks (only) if a password contains `"`; note if token refresh ever fails mysteriously.
 
+### Chunk 4 (2026-07-07) — API\Instagram + API\TikTok
+
+Read in full: `Instagram\UserData.vb`, `Instagram\UserData.GQL.vb`, `Instagram\SiteSettings.vb`,
+`Instagram\Declarations.vb`, `Instagram\EditorExchangeOptions.vb`, `TikTok\UserData.vb`,
+`TikTok\SiteSettings.vb`, `TikTok\Declarations.vb`, `TikTok\UserExchangeOptions.vb`.
+
+Bugs fixed (see *Fixes applied*):
+- Instagram `ObtainMedia_SetReelsFunc` picture-size lambda checked `width` twice and `height` never
+  (copy-paste) — height-only size entries fell into the URL-regex fallback instead of computing the size.
+- TikTok reposts: `postDate` was read from the JSON document root (`j.Value("createTime")`) instead of
+  the post item (`.Value("createTime")`) — repost dates were always Nothing, so date limits never
+  applied to reposts and their posts carried no date.
+- TikTok `ReparseMissing`, three defects: (1) reparsed replacement items were added to `_TempMediaList`
+  with State=Unknown, so in DownloadMissingOnly mode the base filter
+  (`_TempMediaList.RemoveAll(Not Missing)`, UserDataBase ~1333) silently discarded them AFTER the
+  originals were already queued for removal from `_ContentList` — "Download missing posts" deleted the
+  missing records without downloading anything; now replacements are stamped Missing and carry over the
+  original Post info + attempt count (mirrors Reddit/Redgifs, which pass `State:=Missing` via
+  ObtainMedia). (2) No give-up budget — a permanently deleted post spawned a yt-dlp/gallery-dl process
+  every run forever; ported `MaxReparseMissingAttempts = 10` with attempt counting on failure +
+  `_ForceSaveUserData` (same pattern as Reddit/Redgifs). (3) Sibling images of a multi-image post were
+  removed from `_ContentList` unconditionally, even when the post's reparse had failed — `picIDs` is now
+  a Dictionary(post → success) and siblings are removed only on success.
+
+DownloadMissingOnly/UserExists audit conclusion (closes the chunk-3 Open Suspicion):
+- **TikTok**: no `UserExists` mechanism exists at all (`DownloadingException` returns 0 uncondition-
+  ally; yt-dlp/gallery-dl exit codes aren't surfaced), so an existence probe can't be ported — the
+  attempts budget above bounds the damage instead.
+- **Instagram**: moot — Instagram has NO `ReparseMissing` override (inherits the empty base no-op), so
+  "Download missing posts" for an Instagram user silently does nothing (nothing is reparsed, base
+  filter leaves `_TempMediaList` empty, no records are harmed). Missing Instagram items are simply
+  never retried, in routine mode or missing-only mode. Implementing an Instagram reparse (the
+  `/api/v1/media/{id}/info/` endpoint via the existing `DownloadPosts` machinery would fit) is a
+  **feature decision for the user**, not a silent fix — raised in the chunk-4 report.
+
+Notes (no action, for awareness):
+- Instagram `SiteSettings.ReadyToDownload` requires `CBool(DownloadTimeline.Value)` — turning off the
+  site-level "Download timeline" option gates off ALL Instagram downloads (stories/reels/tagged too).
+- Instagram Tagged-limit check (~866–872) is redundant/overlapping (`Not HasValue OrElse ... < limit`
+  else-branch throws) but functionally harmless.
+- Instagram `DownloadPosts` (~952) `If Index > 0 Then ProgressPre.ChangeMax(1)` — `Index` here is the
+  loop-external member, looks intentional (progress only for indexed/paged runs).
+- Instagram `ParseTokens` heuristic: a scraped token containing ":" is dtsg, else lsd — fragile but
+  upstream, and failures raise ExitException with a clear message.
+- Instagram `ValidateExtension`: heic pictures get both a heic and a jpg entry (struct copy) — upstream
+  intent (download both, keep what works).
+- TikTok `ReparseMissing` reparses only Video and Picture items — any other Missing type is skipped
+  (never attempted, never given up). Harmless today: TikTok only ever creates Video/Picture items.
+- TikTok posts-file IDs: photos are persisted as `photo_{id}` in `_TempPostsList` but `_ContentList`
+  Post.IDs are unprefixed; base line ~1315 re-adds unprefixed IDs. Dedupe still works because discovery
+  checks the prefixed form against the persisted file, but the two ID namespaces coexist — don't
+  "unify" them.
+
 Pre-ledger work (earlier sessions, already committed to fork):
 - `Download\NetworkBreaker.vb` — new DNS-failure circuit breaker (written by Claude, reviewed).
 - `TDownloader.vb` — breaker integration + observability logging (partial review only; full review due in chunk 1).
@@ -156,16 +209,21 @@ Pre-ledger work (earlier sessions, already committed to fork):
   UserSearchForm comparer fix, UserFinder log label fix; new ActivityLogForm (live activity-log viewer,
   Info menu → "Activity log": Snapshot backfill on show, EntryAdded via BeginInvoke while visible,
   autoscroll/copy/clear, hide-on-close, disposed with MainFrame).
-- *(this commit)* — Chunk 3: Redgifs ReparseMissing give-up budget (MaxReparseMissingAttempts=10,
+- `cf7235c` — Chunk 3: Redgifs ReparseMissing give-up budget (MaxReparseMissingAttempts=10,
   410/404 permanent-gone short-circuit, attempt counting on all failure paths, _ForceSaveUserData
   persistence, Finally bounds guard) — mirrors the Reddit mechanism.
+- *(this commit)* — Chunk 4: Instagram width/height copy-paste in ObtainMedia_SetReelsFunc; TikTok
+  repost createTime read from document root instead of post item; TikTok ReparseMissing overhaul
+  (Missing-state stamping so DownloadMissingOnly doesn't discard replacements while deleting the
+  originals, MaxReparseMissingAttempts=10 give-up budget, per-post success tracking for multi-image
+  sibling removal).
 
 ## Open Suspicions
 
 *(one half of a cross-module interaction seen; verify when the other half is read)*
 
-- `DownloadMissingOnly` mode skips `DownloadDataF`, leaving `UserExists` defaulted to `True` unless a module probes explicitly. Chunk 3 confirmed Reddit AND Redgifs already carry the existence probe (added in pre-ledger sessions). Remaining to audit: Instagram, TikTok — chunk 4.
-- The prior ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter/Reddit/Redgifs) each hand-roll the existence-probe pattern — chunk 1 read `UserDataBase` and confirmed the mechanism (`EnvirDownloadSet` resets `UserExists=True` every run); a shared base hook remains an option if chunk 4 needs the same fix again.
+- ~~`DownloadMissingOnly`/`UserExists` audit~~ **RESOLVED (chunk 4)**: Reddit + Redgifs carry the probe; TikTok can't (no UserExists mechanism — attempts budget bounds it instead); Instagram is moot (no ReparseMissing override at all — see chunk 4 notes; possible user-approved feature).
+- The ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter/Reddit/Redgifs) each hand-roll the existence-probe pattern; a shared base hook remains a chunk-6 refactor option, but no NEW site needed the probe in chunk 4, so pressure is low.
 - Chunk 5: check whether Feed code compensates for the old broken `UserMedia.New(EContainer)` path reconstruction (fixed in 53ca6a5) — a compensating hack there would now double-correct.
 
 ## PersonalUtilities Hazards (closed-source, work around only)

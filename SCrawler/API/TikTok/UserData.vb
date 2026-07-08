@@ -411,7 +411,7 @@ Namespace API.TikTok
                                                                 If title.IsEmptyString Then title = GetNewFileName(.Value("desc").StringRemoveWinForbiddenSymbols,
                                                                                                                    TitleUseNative, RemoveTagsFromTitle, TitleAddVideoID, postID, titleRegex)
                                                             End If
-                                                            postDate = AConvert(Of Date)(j.Value("createTime"), UnixDate32Provider, Nothing)
+                                                            postDate = AConvert(Of Date)(.Value("createTime"), UnixDate32Provider, Nothing)
                                                             If postDate.HasValue Then
                                                                 Select Case CheckDatesLimit(postDate, SimpleDateConverter)
                                                                     Case DateResult.Skip : Continue For
@@ -534,40 +534,85 @@ Namespace API.TikTok
         End Sub
 #End Region
 #Region "ReparseMissing"
+        ' m.Attempts accumulates across runs (persisted via _ForceSaveUserData): incremented here
+        ' when the post re-fetch fails, and by DownloadContentDefault on file download failures.
+        ' Without a budget, a permanently deleted post spawns a yt-dlp/gallery-dl process on
+        ' every run forever.
+        Private Const MaxReparseMissingAttempts As Integer = 10
         Protected Overrides Sub ReparseMissing(ByVal Token As CancellationToken)
             If ContentMissingExists Then
-                Dim m As UserMedia
+                Dim m As UserMedia, mm As UserMedia
                 Dim d As IYouTubeMediaContainer = Nothing
-                Dim i%
+                Dim i%, n%
+                Dim pKey$
                 Dim rList As New List(Of Integer)
-                Dim picIDs As New List(Of String)
+                Dim picIDs As New Dictionary(Of String, Boolean)
                 Dim defDir As SFile = SFile.GetPath(DownloadContentDefault_GetRootDir())
                 Dim result As Boolean
+                Dim tmpStartIndex%
                 For i = 0 To _ContentList.Count - 1
                     If _ContentList(i).State = UserMedia.States.Missing Then
                         m = _ContentList(i)
+                        If m.Attempts >= MaxReparseMissingAttempts Then
+                            ' Retry budget exhausted — remove from the missing list permanently.
+                            MyMainLOG = $"{ToStringForLog()}: ReparseMissing — post [{m.Post.ID.IfNullOrEmpty(m.URL_BASE)}] " &
+                                        $"gave up after {m.Attempts} failed attempt(s); removing from missing list."
+                            rList.Add(i)
+                            _ForceSaveUserData = True
+                            Continue For
+                        End If
+                        pKey = If(m.Post.ID, String.Empty)
                         result = False
+                        tmpStartIndex = _TempMediaList.Count
                         Try
                             If m.Type = UTypes.Video Then
                                 d = MySettings.GetSingleMediaInstance(m.URL_BASE, defDir)
-                                result = False
                                 If If(UserCache?.Disposed, True) Then UserCache = CreateCache()
                                 DownloadSingleObject_GetPosts(d, Token, UserCache, result)
                             ElseIf m.Type = UTypes.Picture Then
-                                If picIDs.Contains(m.Post.ID) Then
-                                    rList.Add(i)
+                                If picIDs.ContainsKey(pKey) Then
+                                    ' Sibling image of a post already reparsed in this run: a successful
+                                    ' reparse re-added every image of the post, so remove the sibling only
+                                    ' if that reparse succeeded.
+                                    If picIDs(pKey) Then
+                                        rList.Add(i)
+                                    Else
+                                        m.Attempts += 1
+                                        _ContentList(i) = m
+                                        _ForceSaveUserData = True
+                                    End If
+                                    Continue For
                                 Else
                                     d = MySettings.GetSingleMediaInstance(m.URL_BASE, defDir)
                                     If If(UserCache?.Disposed, True) Then UserCache = CreateCache()
                                     DownloadSingleObject_GetPosts(d, Token, UserCache, result)
-                                    picIDs.Add(m.Post.ID)
+                                    picIDs(pKey) = result
                                 End If
                             End If
                         Catch ex As Exception
                             result = False
+                            If m.Type = UTypes.Picture Then picIDs(pKey) = False
                             ProcessException(ex, Token, "ReparseMissing")
                         End Try
-                        If result Then rList.Add(i)
+                        If result Then
+                            rList.Add(i)
+                            ' Stamp the re-added items as Missing, carrying over the original post info
+                            ' and attempt count: in DownloadMissingOnly mode UserDataBase.DownloadData
+                            ' removes every non-Missing item from _TempMediaList before downloading, so
+                            ' without this the replacements are silently discarded while the originals
+                            ' are removed from the content list.
+                            For n = tmpStartIndex To _TempMediaList.Count - 1
+                                mm = _TempMediaList(n)
+                                mm.State = UserMedia.States.Missing
+                                If mm.Post.ID.IsEmptyString Then mm.Post = m.Post
+                                mm.Attempts = m.Attempts
+                                _TempMediaList(n) = mm
+                            Next
+                        Else
+                            m.Attempts += 1
+                            _ContentList(i) = m
+                            _ForceSaveUserData = True
+                        End If
                         d.DisposeIfReady(False)
                     End If
                 Next
