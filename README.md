@@ -1,3 +1,8 @@
+> **This is a fork** of [AAndyProgram/SCrawler](https://github.com/AAndyProgram/SCrawler) with
+> extensive bug fixes, an activity-log window, Instagram missing-post recovery, and standalone
+> build support. See [FORK.md](FORK.md) for what changed and how to build, and
+> [REVIEW.md](REVIEW.md) for the full code-review ledger. The original README follows.
+
 # 🏳️‍🌈 Happy LGBT Pride Month 🎉
 
 # 🏳️‍🌈 Social networks crawler 🏳️‍🌈

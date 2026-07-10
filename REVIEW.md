@@ -3,6 +3,12 @@
 Persistent state for the multi-session code review + hardening effort.
 Any Claude session (any model) resumes from this file — read it fully before touching code.
 
+**STATUS: the planned review is COMPLETE** (chunks 1–6 + 5.5, finished 2026-07-09). No Open
+Suspicions remain. This file stays as the authoritative record of what was reviewed, fixed, and
+deliberately left alone; [FORK.md](FORK.md) is the user-facing summary. Remaining open item
+(user decision, not review work): the Feed async/placeholder tile-loading redesign — see the
+chunk-5 notes.
+
 ## Ground rules
 
 - **Fix confirmed bugs immediately**; build (`msbuild`), deploy to `D:\Utilities\SCrawler\`, commit per chunk.
@@ -361,7 +367,7 @@ Pre-ledger work (earlier sessions, already committed to fork):
   FilesSnapshot/FilesRemoveAll/FilesClear/FilesLocked.
 - `bed3d11` — Chunk 5.5: Instagram ReparseMissing override (user-approved feature) — see the
   chunk-5.5 Reviewed section for design details.
-- *(this commit)* — Chunk 6: TDownloader unavailable-host users → KeysSkipped (no more unpaired
+- `3994234` — Chunk 6: TDownloader unavailable-host users → KeysSkipped (no more unpaired
   AfterDownload / false "completed"); per-host batch fill instead of Exit For at first full host;
   UserDataBase stxt Continue For → Skipped fall-through; ProfileSaved counter swap; Feed focus steal
   gated on ActiveForm; FeedMedia unconditional event unsubscribe on dispose.
