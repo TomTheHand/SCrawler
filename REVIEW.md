@@ -32,7 +32,7 @@ Any Claude session (any model) resumes from this file — read it fully before t
 | 4 | `API\Instagram` + `API\TikTok` | 3.8k | **done** (2026-07-07) |
 | 5 | `Download\Feed` — responsiveness/jank focus | 6.1k | **done** (2026-07-08) |
 | 5.5 | Instagram `ReparseMissing` (user-approved feature, 2026-07-09) | — | **done** (2026-07-09) |
-| 6 | Ledger sweep: resolve all remaining Open Suspicions | — | pending |
+| 6 | Ledger sweep: resolve all remaining Open Suspicions + note triage | — | **done** (2026-07-09) |
 
 ## Reviewed
 
@@ -273,6 +273,57 @@ to carousel children — latent only, since nothing passes State=Missing into Ob
 reparse deliberately stamps after the fact). If a future caller relies on the State parameter for
 gallery posts, this is the TikTok chunk-4 bug again.
 
+### Chunk 6 (2026-07-09) — ledger sweep: Open Suspicions + note triage
+
+Closed the last Open Suspicion (existence-probe base hook → won't-do, see below) and triaged every
+note-level finding from chunks 1–5. Six promoted to fixes:
+
+1. **TDownloader batch loop — unavailable-host users falsely "completed"** (chunk-1 note, worse than
+   noted): users whose host/account failed `AvailablePartial` went to `Keys` but not `KeysSkipped`, so
+   the cleanup loop gave them the full completed treatment — `AfterDownload` WITHOUT its paired
+   `BeforeStartDownload` (Instagram's AfterDownload writes the user's `RequestsCountSession` into
+   `MyLastRequestsCount`, corrupting the 429-avoidance carry-over for the next user; OnlyFans' pushes a
+   possibly-Nothing `CCookie` into the shared responser) plus a false "completed — 0 new file(s)"
+   activity entry. Now they're added to `KeysSkipped` (skip log, no completed treatment, still removed
+   from the job — correct, since `HostsUnavailableIndexes` only clears at `DownloadDone`).
+2. **TDownloader batch loop — one full host stopped the whole batch** (chunk-1 note): the per-host
+   task-limit check was `Exit For` after starting the limit-th task, so batch-building stopped at the
+   first host to fill up — with many queued users on one site, all other sites downloaded almost
+   serially behind it. Now a pre-check `Continue For` skips only that host's users (they stay in the
+   job for the next batch; NOT added to `Keys`, so cleanup doesn't drop them) and the batch keeps
+   filling with other hosts' users. `Math.Max(limit.Limit, 1)` preserves the original
+   at-least-one-per-batch guarantee (a TaskCount=0 host would otherwise spin the outer `Do While`).
+3. **UserDataBase `stxt` block `Continue For`** (chunk-1 note): a text post with no file and no
+   derivable destination skipped the `_ContentNew(i) = v` write-back, `Progress.Perform`, and left the
+   item Unknown. Now marks it `Skipped` and falls through (a `textTargetOk` flag replaces the jump);
+   `dCount` still not incremented (nothing was saved).
+4. **ProfileSaved swapped counters** (chunk-1 note): `_Unavailable += 1` sat in the "is not ready"
+   branch and `_NotReady += 1` in the "is unavailable" branch. Swapped (they're only ever summed —
+   cosmetic, but free).
+5. **Feed focus steal** (chunk-5 note): `MyRange_IndexChanged`'s Finally called `Activate() : Focus()`
+   unconditionally on every page change. Now gated on `Form.ActiveForm Is Me` — refocuses only when
+   the feed is already the active window.
+6. **FeedMedia dispose-handler leak** (chunk-5 note): the Disposed handler removed the
+   `Settings.Feeds` event handlers only `If Settings.FeedShowSpecialFeedsMediaItem` — toggling the
+   setting off with tiles alive leaked them. RemoveHandler is now unconditional (no-op if never
+   attached).
+
+Existence-probe base hook — **RESOLVED: won't-do.** Each site's probe is ~90% site-specific request
+mechanics (Reddit about.json, Mastodon lookup URL, Redgifs token+API, OnlyFans cookies, ThreadsNet
+inline retry-loop check); a shared base hook would save ~4 lines per site while adding an abstraction
+layer, and no new site has needed the probe since. If a future site needs one, copy the Redgifs
+version (~UserData.vb:160-193) — it's the cleanest.
+
+Notes NOT promoted (stand as recorded, with reasons): FilesSave spin-wait + ListImagesLoader jank
+(subsumed by the async-loading redesign question, open with user); UpdateUsersList last-user-delete
+persistence (niche, crash-window only); DownloadProgress/ActiveDownloadingProgress dispose leaks
+(leak-class, forms live for the app's lifetime); totals-recount asymmetry, M3U8 MergeFiles OutFile
+edge, Reddit dead branches, Redgifs token spin-wait, curl quoting (upstream intent / needs
+closed-source confirmation / dead code); Instagram ReadyToDownload timeline-gates-everything +
+FeedFilter.Sites picker-only (behavior changes = feature decisions, not bugs); TikTok ID namespaces
+(don't unify); UserMedia.GetHashCode mutability (no observed harm); Instagram ObtainMedia gallery
+State/Attempts drop (latent — guarded against in the 5.5 implementation, noted there).
+
 Pre-ledger work (earlier sessions, already committed to fork):
 - `Download\NetworkBreaker.vb` — new DNS-failure circuit breaker (written by Claude, reviewed).
 - `TDownloader.vb` — breaker integration + observability logging (partial review only; full review due in chunk 1).
@@ -308,15 +359,19 @@ Pre-ledger work (earlier sessions, already committed to fork):
   Media disposal in FeedVideo (was: one never-disposed native engine per video tile); Feed readers of
   Downloader.Files converted to FeedDataLock via new TDownloader helpers
   FilesSnapshot/FilesRemoveAll/FilesClear/FilesLocked.
-- *(this commit)* — Chunk 5.5: Instagram ReparseMissing override (user-approved feature) — see the
+- `bed3d11` — Chunk 5.5: Instagram ReparseMissing override (user-approved feature) — see the
   chunk-5.5 Reviewed section for design details.
+- *(this commit)* — Chunk 6: TDownloader unavailable-host users → KeysSkipped (no more unpaired
+  AfterDownload / false "completed"); per-host batch fill instead of Exit For at first full host;
+  UserDataBase stxt Continue For → Skipped fall-through; ProfileSaved counter swap; Feed focus steal
+  gated on ActiveForm; FeedMedia unconditional event unsubscribe on dispose.
 
 ## Open Suspicions
 
 *(one half of a cross-module interaction seen; verify when the other half is read)*
 
 - ~~`DownloadMissingOnly`/`UserExists` audit~~ **RESOLVED (chunk 4)**: Reddit + Redgifs carry the probe; TikTok can't (no UserExists mechanism — attempts budget bounds it instead); Instagram is moot (no ReparseMissing override at all — see chunk 4 notes; possible user-approved feature).
-- The ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter/Reddit/Redgifs) each hand-roll the existence-probe pattern; a shared base hook remains a chunk-6 refactor option, but no NEW site needed the probe in chunk 4, so pressure is low.
+- ~~The ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter/Reddit/Redgifs) each hand-roll the existence-probe pattern; a shared base hook remains a chunk-6 refactor option, but no NEW site needed the probe in chunk 4, so pressure is low.~~ **RESOLVED (chunk 6): won't-do** — see chunk-6 section. *(No Open Suspicions remain.)*
 - ~~Chunk 5: check whether Feed code compensates for the old broken `UserMedia.New(EContainer)` path reconstruction (fixed in 53ca6a5)~~ **RESOLVED (chunk 5): no double-correction** — the only compensation is `FeedMedia.FileCheckSpecialFolders`, gated by `If Not File.Exists`: when the 53ca6a5 reconstruction is right it never runs; when the file is genuinely missing, appending another folder still yields a nonexistent path and the tile is discarded exactly as before. Harmless legacy fallback for pre-fix session XMLs; left in place.
 
 ## PersonalUtilities Hazards (closed-source, work around only)

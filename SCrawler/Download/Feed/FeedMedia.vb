@@ -425,12 +425,13 @@ Namespace DownloadObjects
             If Not MyPicture Is Nothing Then MyPicture.Dispose() : MyPicture = Nothing
             If Not MyVideo Is Nothing Then MyVideo.Dispose()
             Try
-                If Settings.FeedShowSpecialFeedsMediaItem Then
-                    With Settings.Feeds
-                        RemoveHandler .FeedAdded, AddressOf Feed_FeedAdded
-                        RemoveHandler .FeedRemoved, AddressOf Feed_FeedRemoved
-                    End With
-                End If
+                ' Always detach: the ctor attaches these when FeedShowSpecialFeedsMediaItem is TRUE,
+                ' but the setting can be toggled off while tiles are alive — gating the RemoveHandler
+                ' on the current value leaked the handlers. (RemoveHandler is a no-op if not attached.)
+                With Settings.Feeds
+                    RemoveHandler .FeedAdded, AddressOf Feed_FeedAdded
+                    RemoveHandler .FeedRemoved, AddressOf Feed_FeedRemoved
+                End With
             Catch
             End Try
         End Sub

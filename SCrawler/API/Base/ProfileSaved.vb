@@ -81,11 +81,11 @@ Namespace API.Base
                             End If
                         End Using
                     Else
-                        _Unavailable += 1
+                        _NotReady += 1
                         Progress.InformationTemporary = $"Host [{Host.Name}{aStr}] is not ready"
                     End If
                 Else
-                    _NotReady += 1
+                    _Unavailable += 1
                     Progress.InformationTemporary = $"Host [{Host.Name}{aStr}] is unavailable"
                 End If
             Catch oex As OperationCanceledException When Token.IsCancellationRequested

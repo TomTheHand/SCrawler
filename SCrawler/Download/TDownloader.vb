@@ -739,7 +739,6 @@ Namespace DownloadObjects
                         If Not _Item.Disposed Then
                             host = _Job.UserHost(_Item)
                             hostAvailable = DirectCast(_Item, UserDataBase).HostCollection.AvailablePartial(_Item.AccountName)
-                            Keys.Add(_Item.Key)
                             If hostAvailable Then
                                 limit = host
                                 If Not limits.Contains(limit) Then
@@ -749,6 +748,15 @@ Namespace DownloadObjects
                                     limitIndex = limits.IndexOf(limit)
                                     limit = limits(limitIndex)
                                 End If
+                                ' This host's task limit is reached for this batch: leave the user in the
+                                ' job (not in Keys, so the cleanup below doesn't remove them) and keep
+                                ' filling the batch with other hosts' users. Was 'Exit For' (after starting
+                                ' the task), which stopped building the whole batch at the first full host —
+                                ' sites were downloaded almost serially whenever one site had many queued
+                                ' users. Math.Max keeps the original at-least-one-per-batch guarantee if a
+                                ' host's TaskCount is ever 0 (otherwise the outer Do While would spin).
+                                If limit.Value >= Math.Max(limit.Limit, 1) Then Continue For
+                                Keys.Add(_Item.Key)
                                 If host.Source.ReadyToDownload(Download.Main) Then
                                     host.BeforeStartDownload(_Item, Download.Main)
                                     _Job.ThrowIfCancellationRequested()
@@ -758,10 +766,18 @@ Namespace DownloadObjects
                                     RaiseEvent UserDownloadStateChanged(_Item, True)
                                     limit = limit.Next
                                     limits(limitIndex) = limit
-                                    If limit.Value >= limit.Limit Then Exit For
                                 Else
                                     KeysSkipped.Add(_Item.Key)
                                 End If
+                            Else
+                                ' Unavailable host/account: mark the user skipped. Previously these users
+                                ' went to Keys but not KeysSkipped, so the cleanup below gave them the full
+                                ' "completed" treatment — AfterDownload without its paired
+                                ' BeforeStartDownload (which e.g. corrupts Instagram's request-count
+                                ' carry-over) and a false "completed — 0 new file(s)" activity entry —
+                                ' without a single request having been made.
+                                Keys.Add(_Item.Key)
+                                KeysSkipped.Add(_Item.Key)
                             End If
                         End If
                     Next
@@ -791,8 +807,8 @@ Namespace DownloadObjects
                             Next
                             For Each kvp In skippedByService
                                 MyMainLOG = $"[{kvp.Key}]: {kvp.Value} user(s) not downloaded this batch — " &
-                                            "service paused (session error or rate limit). Check log for details."
-                                ActivityLog.Add($"[{kvp.Key}] {kvp.Value} user(s) skipped — service paused (session error or rate limit)")
+                                            "service unavailable or paused (session error or rate limit). Check log for details."
+                                ActivityLog.Add($"[{kvp.Key}] {kvp.Value} user(s) skipped — service unavailable or paused")
                             Next
                         End If
                         Dim dcc As Boolean = False

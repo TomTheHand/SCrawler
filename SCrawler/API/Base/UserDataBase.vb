@@ -1922,6 +1922,7 @@ BlockNullPicture:
                                             End If
                                         End If
 stxt:
+                                        Dim textTargetOk As Boolean = True
                                         If DownloadText And Not v.PostText.IsEmptyString And (v.Type = UTypes.Text Or v.File.Exists) Then
                                             fTxt = v.File
                                             If fTxt.IsEmptyString Then
@@ -1931,21 +1932,28 @@ stxt:
                                                                                               v.Post.ID.StringRemoveWinForbiddenSymbols
                                                     If fTxt.IsEmptyString Then Throw New ArgumentNullException("Text", "Error downloading text") With {.HelpLink = 10}
                                                 Else
-                                                    Continue For
+                                                    ' No file to attach the text to and no destination to derive one from.
+                                                    ' Was 'Continue For', which skipped the '_ContentNew(i) = v' write-back
+                                                    ' and Progress.Perform below — the item stayed Unknown and the progress
+                                                    ' bar ended short. Mark it Skipped and fall through instead.
+                                                    v.State = UStates.Skipped
+                                                    textTargetOk = False
                                                 End If
                                             End If
-                                            v.PostTextFileSpecialFolder = DownloadTextSpecialFolder
-                                            If DownloadTextSpecialFolder Then fTxt.Path = $"{fTxt.Path.StringTrimEnd("\")}\{PostTextSpecialFolderDefault}"
-                                            fTxt.Extension = "txt"
-                                            v.PostTextFile = TextSaver.SaveTextToFile(v.PostText, fTxt,,, Settings.FeedShowTextPosts_LogErrors_E)
-                                            If Not v.PostTextFile.Exists Then Throw New ArgumentNullException("Text", "Error downloading text") With {.HelpLink = 10}
-                                            If v.Type = UTypes.Text Then v.File = v.PostTextFile
-                                            v.State = UStates.Downloaded
-                                            updateDownCount(Not v.Type = UTypes.Text)
-                                            If v.URL.IsEmptyString Then v.URL = v.PostTextFile.File
-                                            If v.URL_BASE.IsEmptyString Then v.URL_BASE = v.URL
+                                            If textTargetOk Then
+                                                v.PostTextFileSpecialFolder = DownloadTextSpecialFolder
+                                                If DownloadTextSpecialFolder Then fTxt.Path = $"{fTxt.Path.StringTrimEnd("\")}\{PostTextSpecialFolderDefault}"
+                                                fTxt.Extension = "txt"
+                                                v.PostTextFile = TextSaver.SaveTextToFile(v.PostText, fTxt,,, Settings.FeedShowTextPosts_LogErrors_E)
+                                                If Not v.PostTextFile.Exists Then Throw New ArgumentNullException("Text", "Error downloading text") With {.HelpLink = 10}
+                                                If v.Type = UTypes.Text Then v.File = v.PostTextFile
+                                                v.State = UStates.Downloaded
+                                                updateDownCount(Not v.Type = UTypes.Text)
+                                                If v.URL.IsEmptyString Then v.URL = v.PostTextFile.File
+                                                If v.URL_BASE.IsEmptyString Then v.URL_BASE = v.URL
+                                            End If
                                         End If
-                                        dCount += 1
+                                        If textTargetOk Then dCount += 1
                                     Catch anex As ArgumentNullException When anex.HelpLink = 10
                                         LogError(anex, anex.Message, Settings.FeedShowTextPosts_LogErrors_E)
                                     Catch woex As OperationCanceledException When Token.IsCancellationRequested

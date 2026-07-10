@@ -1742,9 +1742,14 @@ Namespace DownloadObjects
                     DataPopulated = True
                     IndexChanged = True
                 End If
+                ' Re-assert focus only if the feed form is already the active window: this runs on
+                ' every page change (including endless-scroll auto-flips), and unconditionally
+                ' calling Activate() stole focus from whatever the user was doing.
                 ControlInvokeFast(Me, Sub()
-                                          Activate()
-                                          Focus()
+                                          If Form.ActiveForm Is Me Then
+                                              Activate()
+                                              Focus()
+                                          End If
                                       End Sub, EDP.None)
             End Try
         End Sub
