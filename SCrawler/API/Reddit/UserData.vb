@@ -337,11 +337,13 @@ Namespace API.Reddit
                 Err429TryAgain = False
                 If (.RequestCount Mod 100) = 0 Then
                     ' Proactive self-throttle: pause every 100 requests to avoid triggering a
-                    ' real 429. Without the log/label update below, this is a silent 60-second
-                    ' freeze — indistinguishable from a hang.
-                    Dim waitMsg$ = $"Reddit: rate-limit self-throttle — pausing 60s (request #{.RequestCount})"
-                    MyMainLOG = $"{ToStringForLog()}: {waitMsg}"
-                    If Not Progress Is Nothing Then Progress.InformationTemporary = waitMsg
+                    ' real 429 (a real 429 also lands here — Err429Process sets RequestCount=100).
+                    ' Without the activity-log/label update below, this is a silent 60-second
+                    ' freeze — indistinguishable from a hang. Cooldowns go to the activity log
+                    ' (live health view), not MyMainLOG (the error log).
+                    Dim waitMsg$ = $"rate-limit self-throttle — pausing 60s (request #{.RequestCount})"
+                    DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: {waitMsg}")
+                    If Not Progress Is Nothing Then Progress.InformationTemporary = $"Reddit: {waitMsg}"
                     Thread.Sleep(60100)
                 End If
             End With

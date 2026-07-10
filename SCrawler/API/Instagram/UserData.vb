@@ -584,8 +584,9 @@ Namespace API.Instagram
                         End Select
                     End If
                     If Not ProgressTempSet Then
-                        Dim waitMsg$ = $"Instagram: rate-limit wait — pausing until { .GetWaitDate().ToString(DateTimeDefaultProvider)}"
-                        MyMainLOG = $"{ToStringForLog()}: {waitMsg}"
+                        ' Cooldown lines belong in the activity log (live health view),
+                        ' not MyMainLOG (the error log).
+                        DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: rate-limit cooldown — waiting until { .GetWaitDate().ToString(DateTimeDefaultProvider)}")
                         Progress.InformationTemporary = $"Waiting until { .GetWaitDate().ToString(DateTimeDefaultProvider)}"
                     End If
                     ProgressTempSet = True
@@ -605,11 +606,12 @@ Namespace API.Instagram
                 If StartWait And RequestsCount > 0 And (RequestsCount Mod .RequestsWaitTimerTaskCount.Value) = 0 Then Thread.Sleep(CInt(.RequestsWaitTimer.Value))
                 If RequestsCount >= MaxPostsCount - 5 Then
                     ' Proactive self-throttle: pause to avoid hitting Instagram's request limit.
-                    ' Without the log/label update below, this is a silent multi-second freeze —
-                    ' indistinguishable from a hang.
-                    Dim waitMsg$ = $"Instagram: rate-limit self-throttle — pausing {CInt(.SleepTimerOnPostsLimit.Value) \ 1000}s (request #{RequestsCount})"
-                    MyMainLOG = $"{ToStringForLog()}: {waitMsg}"
-                    If Not Progress Is Nothing Then Progress.InformationTemporary = waitMsg
+                    ' Without the activity-log/label update below, this is a silent multi-second
+                    ' freeze — indistinguishable from a hang. Cooldowns go to the activity log
+                    ' (live health view), not MyMainLOG (the error log).
+                    Dim waitMsg$ = $"rate-limit self-throttle — pausing {CInt(.SleepTimerOnPostsLimit.Value) \ 1000}s (request #{RequestsCount})"
+                    DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: {waitMsg}")
+                    If Not Progress Is Nothing Then Progress.InformationTemporary = $"Instagram: {waitMsg}"
                     Thread.Sleep(CInt(.SleepTimerOnPostsLimit.Value))
                 End If
             End With

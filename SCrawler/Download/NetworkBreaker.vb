@@ -94,6 +94,7 @@ Namespace DownloadObjects
                 Downloader.Suspended = True
                 MyMainLOG = $"Network connectivity lost — download paused. " &
                             $"Waiting up to {CInt(MaxWaitMinutes)} min for connection to return..."
+                ActivityLog.Add($"network connectivity lost — downloads paused (waiting up to {CInt(MaxWaitMinutes)} min)")
             End If
         End Sub
 
@@ -109,6 +110,7 @@ Namespace DownloadObjects
                 End SyncLock
                 Downloader.Suspended = False
                 MyMainLOG = "Network connectivity restored — resuming download."
+                ActivityLog.Add("network connectivity restored — resuming downloads")
             End If
         End Sub
 
@@ -149,6 +151,7 @@ Namespace DownloadObjects
                 If DateTime.Now > deadline Then
                     MyMainLOG = $"Network connectivity did not return within " &
                                 $"{CInt(MaxWaitMinutes)} min — download stopped."
+                    ActivityLog.Add($"network connectivity did not return within {CInt(MaxWaitMinutes)} min — download stopped")
                     ' Clear the tripped state (and Downloader.Suspended) on give-up so it doesn't
                     ' linger after the run ends. ResetSilent doesn't log a misleading "restored".
                     ResetSilent()

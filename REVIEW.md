@@ -367,6 +367,11 @@ Pre-ledger work (earlier sessions, already committed to fork):
   FilesSnapshot/FilesRemoveAll/FilesClear/FilesLocked.
 - `bed3d11` — Chunk 5.5: Instagram ReparseMissing override (user-approved feature) — see the
   chunk-5.5 Reviewed section for design details.
+- *(this commit)* — Post-review (user request): cooldown/pause events now go to the ACTIVITY LOG,
+  not MyMainLOG — convention: MyMainLOG = errors, ActivityLog = live health. Moved: Instagram
+  Ready() rate-limit wait + NextRequest self-throttle, Reddit Wait429 self-throttle (these three
+  were review-era MyMainLOG additions). NetworkBreaker trip/restore/give-up now ALSO write activity
+  lines (MyMainLOG kept there — connectivity loss is an abnormal event, not a planned cooldown).
 - `3994234` — Chunk 6: TDownloader unavailable-host users → KeysSkipped (no more unpaired
   AfterDownload / false "completed"); per-host batch fill instead of Exit For at first full host;
   UserDataBase stxt Continue For → Skipped fall-through; ProfileSaved counter swap; Feed focus steal
