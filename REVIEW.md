@@ -31,6 +31,7 @@ Any Claude session (any model) resumes from this file — read it fully before t
 | 3 | `API\Reddit` + `API\Redgifs` + `API\Imgur` + `API\Gfycat` | 4.3k | **done** (2026-07-07) |
 | 4 | `API\Instagram` + `API\TikTok` | 3.8k | **done** (2026-07-07) |
 | 5 | `Download\Feed` — responsiveness/jank focus | 6.1k | **done** (2026-07-08) |
+| 5.5 | Instagram `ReparseMissing` (user-approved feature, 2026-07-09) | — | **done** (2026-07-09) |
 | 6 | Ledger sweep: resolve all remaining Open Suspicions | — | pending |
 
 ## Reviewed
@@ -240,6 +241,38 @@ Notes (no action / report-only):
 - `FeedSpecial.RemoveNotExist` runs once per feed lifetime (`_NotExistRemoved` flag) — missing-file
   purge only happens on the first load of a special feed per app run. Author intent, left alone.
 
+### Chunk 5.5 (2026-07-09) — Instagram ReparseMissing (user-approved feature)
+
+The chunk-4 report raised implementing "Download missing posts" for Instagram as a feature decision
+(it was a silent no-op — no `ReparseMissing` override). User approved 2026-07-09 ("Yes, please fix that!").
+
+New `ReparseMissing` override in `Instagram\UserData.vb` (before the Standalone-downloader region):
+- Per missing item, fetches `/api/v1/media/{id}/info/` — the same endpoint + throttle machinery
+  (`Ready()`/`ReconfigureAwaiter`/`NextRequest`/`UpdateRequestNumber`, non-GQL responser mode) the
+  tagged-post reparse (`DownloadPosts`) and standalone downloader already use. Stored `Post.ID` in
+  `mediaID_userID` form is trimmed to the media ID for the URL.
+- `MaxReparseMissingAttempts = 10` give-up budget (Reddit/Redgifs/TikTok pattern), attempts persisted
+  via `_ForceSaveUserData`; one request per unique post ID with sibling resolution via a
+  post→removeOriginal dictionary (a successful fetch re-adds every media of the post).
+- Replacements are stamped State=Missing carrying original Post + Attempts AFTER the ObtainMedia calls
+  (NOT via ObtainMedia's State parameter — its gallery branch drops State/Attempts for carousel
+  children, the same latent bug class as TikTok chunk-4; noted below).
+- Per-item HTTP errors handled locally with `EDP.ReturnValue` + StatusCode switch, NOT via
+  ProcessException: `DownloadingException`'s 404 branch is account-oriented (sets UserExists=False /
+  triggers a username recheck) and a deleted post must not flag a live account. 404 → permanent-gone
+  immediate removal; 429 → engage `TooManyRequests` machinery and retry via the outer `Ready()` loop;
+  400/401 → credentials log + abort loop (item still gets an attempt++ so a media-gone-400 is
+  eventually budgeted out); 500/560 → `SkipUntilNextSession` + abort; else attempt++.
+- DownloadMissingOnly mode skips `DownloadDataF`, so the override does its own minimal session setup
+  (error-field reset, `_DownloadingInProgress`, ResponseReceived handler, `ChangeResponserMode(False)`)
+  and tears down via `UpdateResponser()` in Finally; guarded by `SkipUntilNextSession` early-exit.
+  Finally also carries the rList bounds guard (chunk-3 pattern).
+
+Note (no action): `ObtainMedia`'s gallery branch (~line 1272) forwards neither `State` nor `Attempts`
+to carousel children — latent only, since nothing passes State=Missing into ObtainMedia today (the new
+reparse deliberately stamps after the fact). If a future caller relies on the State parameter for
+gallery posts, this is the TikTok chunk-4 bug again.
+
 Pre-ledger work (earlier sessions, already committed to fork):
 - `Download\NetworkBreaker.vb` — new DNS-failure circuit breaker (written by Claude, reviewed).
 - `TDownloader.vb` — breaker integration + observability logging (partial review only; full review due in chunk 1).
@@ -268,13 +301,15 @@ Pre-ledger work (earlier sessions, already committed to fork):
   (Missing-state stamping so DownloadMissingOnly doesn't discard replacements while deleting the
   originals, MaxReparseMissingAttempts=10 give-up budget, per-post success tracking for multi-image
   sibling removal).
-- *(this commit)* — Chunk 5: zombie special feeds (missing BTT_FEED_ADD_SPEC_REMOVE in both
+- `edc6dda` — Chunk 5: zombie special feeds (missing BTT_FEED_ADD_SPEC_REMOVE in both
   Feed_FeedRemoved fan-outs, centralized feed disposal in Feeds_FeedDeleted, FeedDeleted handler
   attached in Collection.Add/Favorite, dead FindIndex/Dispose block removed from Collection.Delete);
   removed blocking full GC from ClearTable (per page flip, UI thread); shared Lazy LibVLC engine +
   Media disposal in FeedVideo (was: one never-disposed native engine per video tile); Feed readers of
   Downloader.Files converted to FeedDataLock via new TDownloader helpers
   FilesSnapshot/FilesRemoveAll/FilesClear/FilesLocked.
+- *(this commit)* — Chunk 5.5: Instagram ReparseMissing override (user-approved feature) — see the
+  chunk-5.5 Reviewed section for design details.
 
 ## Open Suspicions
 

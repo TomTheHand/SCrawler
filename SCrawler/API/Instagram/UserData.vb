@@ -1562,6 +1562,197 @@ NextPageBlock:
             Return m
         End Function
 #End Region
+#Region "ReparseMissing"
+        ' Give-up budget — same mechanism as Reddit/Redgifs/TikTok. m.Attempts accumulates across runs
+        ' (persisted via _ForceSaveUserData): incremented here when the post re-fetch fails, and by
+        ' DownloadContentDefault on file download failures. Without a budget, a permanently deleted
+        ' post would be re-fetched on every run forever.
+        Private Const MaxReparseMissingAttempts As Integer = 10
+        ''' <summary>
+        ''' Re-fetches every Missing post via <c>/api/v1/media/{id}/info/</c> (the same endpoint the
+        ''' tagged-post reparse and the standalone downloader already use — see <see cref="DownloadPosts"/>)
+        ''' and re-adds its media to <see cref="_TempMediaList"/> with fresh URLs.
+        ''' </summary>
+        Protected Overrides Sub ReparseMissing(ByVal Token As CancellationToken)
+            If Not ContentMissingExists Then Exit Sub
+            If MySiteSettings.SkipUntilNextSession Then Exit Sub
+            Dim URL$ = String.Empty
+            Dim rList As New List(Of Integer)
+            Try
+                ' In DownloadMissingOnly mode DownloadDataF is skipped, so none of its per-session
+                ' environment reset has happened; do the minimal part here. (When called in the routine
+                ' — Settings.ReparseMissingInTheRoutine — DownloadDataF's Finally has already run
+                ' UpdateResponser, which detached the response handler, so this state is correct to
+                ' [re]apply in that mode too; the Finally below tears it down again symmetrically.)
+                Err5xx = -1
+                ErrHandling = -1
+                ErrHandlingLog = True
+                E560Thrown = False
+                _DownloadingInProgress = True
+                AddHandler Responser.ResponseReceived, AddressOf Responser_ResponseReceived
+                ChangeResponserMode(False)
+                Dim m As UserMedia, mm As UserMedia
+                Dim i%, n%, us%
+                Dim startIndex% = 0
+                Dim fetchN% = 0
+                Dim dValue% = 1
+                Dim pKey$, apiID$, r$
+                Dim tmpStartIndex%
+                Dim repeat429 As Boolean
+                ' One media-info request per unique post ID: a successful re-fetch re-adds every
+                ' image/video of the post, so siblings of an already-fetched post are resolved from
+                ' that first result. Value = "remove the original record" (reparsed OK, or the post
+                ' is permanently gone); False = the attempt failed (budget++).
+                Dim postResults As New Dictionary(Of String, Boolean)
+                Dim eRet As New ErrorsDescriber(EDP.ReturnValue)
+                Do While dValue = 1
+                    ThrowAny(Token)
+                    If Not Ready() Then Thread.Sleep(10000) : ThrowAny(Token) : Continue Do
+                    ReconfigureAwaiter()
+                    Try
+                        repeat429 = False
+                        For i = startIndex To _ContentList.Count - 1
+                            startIndex = i
+                            If Disposed Then Exit For
+                            If _ContentList(i).State = UStates.Missing Then
+                                ThrowAny(Token)
+                                m = _ContentList(i)
+                                pKey = If(m.Post.ID, String.Empty)
+                                If m.Attempts >= MaxReparseMissingAttempts Then
+                                    MyMainLOG = $"{ToStringForLog()}: ReparseMissing — post [{pKey.IfNullOrEmpty(m.URL_BASE)}] " &
+                                                $"gave up after {m.Attempts} failed attempt(s); removing from missing list."
+                                    rList.Add(i)
+                                    _ForceSaveUserData = True
+                                ElseIf pKey.IsEmptyString Then
+                                    ' No post ID stored — nothing to re-fetch; burn an attempt so the
+                                    ' budget eventually clears the record.
+                                    m.Attempts += 1
+                                    _ContentList(i) = m
+                                    _ForceSaveUserData = True
+                                ElseIf postResults.ContainsKey(pKey) Then
+                                    If postResults(pKey) Then
+                                        rList.Add(i)
+                                    Else
+                                        m.Attempts += 1
+                                        _ContentList(i) = m
+                                        _ForceSaveUserData = True
+                                    End If
+                                Else
+                                    ' The stored ID may be in "mediaID_userID" form; the API path wants the media ID alone.
+                                    apiID = pKey
+                                    us = apiID.IndexOf("_")
+                                    If us > 0 AndAlso Not ACheck(Of Long)(apiID) AndAlso ACheck(Of Long)(apiID.Substring(0, us)) Then apiID = apiID.Substring(0, us)
+                                    URL = $"https://www.instagram.com/api/v1/media/{apiID}/info/"
+                                    fetchN += 1
+                                    NextRequest((fetchN Mod 5) = 0)
+                                    ThrowAny(Token)
+                                    UpdateRequestNumber()
+                                    Try
+                                        r = Responser.GetResponse(URL,, eRet)
+                                    Catch nre As NullReferenceException
+                                        ' PersonalUtilities bug: Responser._ErrorProcessor is null, so GetResponse's own
+                                        ' catch handler NullRefs on HTTP errors instead of honoring EDP.ReturnValue.
+                                        r = String.Empty
+                                    End Try
+                                    If Not r.IsEmptyString Then
+                                        MySiteSettings.TooManyRequests(False)
+                                        Dim reAdded As Boolean = False
+                                        Using j As EContainer = JsonDocument.Parse(r, eRet)
+                                            If Not j Is Nothing AndAlso If(j("items")?.Count, 0) > 0 Then
+                                                tmpStartIndex = _TempMediaList.Count
+                                                For Each jj As EContainer In j("items")
+                                                    ObtainMedia(jj, pKey, m.SpecialFolder)
+                                                Next
+                                                If _TempMediaList.Count > tmpStartIndex Then
+                                                    reAdded = True
+                                                    ' Stamp replacements as Missing, carrying the original post info and
+                                                    ' attempt count: in DownloadMissingOnly mode UserDataBase.DownloadData
+                                                    ' strips every non-Missing item from _TempMediaList before downloading.
+                                                    ' (Stamped here rather than via ObtainMedia's State parameter because
+                                                    ' the gallery branch of ObtainMedia does not pass State/Attempts on to
+                                                    ' the carousel children.)
+                                                    For n = tmpStartIndex To _TempMediaList.Count - 1
+                                                        mm = _TempMediaList(n)
+                                                        mm.State = UStates.Missing
+                                                        If mm.Post.ID.IsEmptyString Then mm.Post = m.Post
+                                                        mm.Attempts = m.Attempts
+                                                        _TempMediaList(n) = mm
+                                                    Next
+                                                End If
+                                            End If
+                                        End Using
+                                        postResults(pKey) = reAdded
+                                        If reAdded Then
+                                            rList.Add(i)
+                                        Else
+                                            m.Attempts += 1
+                                            _ContentList(i) = m
+                                            _ForceSaveUserData = True
+                                        End If
+                                    Else
+                                        Select Case CInt(Responser.StatusCode)
+                                            Case 404
+                                                ' Instagram's own "media gone" signal — remove the record immediately.
+                                                ' Handled here (not via ProcessException/DownloadingException) because the
+                                                ' 404 branch there is account-oriented and would flag UserExists=False.
+                                                MyMainLOG = $"{ToStringForLog()}: ReparseMissing — post [{pKey}] no longer exists (404); removing from missing list."
+                                                postResults(pKey) = True
+                                                rList.Add(i)
+                                                _ForceSaveUserData = True
+                                            Case 429
+                                                With MySiteSettings
+                                                    Dim WaiterExists As Boolean = .LastApplyingValue.HasValue
+                                                    .TooManyRequests(True)
+                                                    If Not WaiterExists Then .LastApplyingValue = 2
+                                                End With
+                                                Caught429 = True
+                                                MyMainLOG = $"Number of requests before error 429: {RequestsCount}"
+                                                repeat429 = True
+                                                Exit For 'Ready() at the top of the Do loop waits out the limit, then this item is retried
+                                            Case 400, 401
+                                                MyMainLOG = $"Instagram credentials have expired [{CInt(Responser.StatusCode)}]: {ToStringForLog()} [ReparseMissing]"
+                                                m.Attempts += 1 'so a post that consistently yields 400 is still budgeted out eventually
+                                                _ContentList(i) = m
+                                                _ForceSaveUserData = True
+                                                Exit For 'no point re-fetching the rest with dead credentials
+                                            Case 500, 560
+                                                MySiteSettings.SkipUntilNextSession = True
+                                                Err5xx = Responser.StatusCode
+                                                MyMainLOG = $"{ToStringForLog()}: ReparseMissing — ({CInt(Responser.StatusCode)}) session blocked; reparse skipped until next session."
+                                                Exit For
+                                            Case Else
+                                                m.Attempts += 1
+                                                _ContentList(i) = m
+                                                _ForceSaveUserData = True
+                                        End Select
+                                    End If
+                                End If
+                            End If
+                        Next
+                        If repeat429 Then Continue Do
+                        dValue = 0
+                    Catch eex As ExitException
+                        Throw eex
+                    Catch ex As Exception
+                        dValue = ProcessException(ex, Token, $"missing data downloading error [{URL}]",, Sections.Timeline, False)
+                    End Try
+                Loop
+            Catch eex2 As ExitException
+            Catch oex2 As OperationCanceledException When Token.IsCancellationRequested Or oex2.HelpLink = InstAborted
+                If oex2.HelpLink = InstAborted Then HasError = True
+            Catch DoEx As Exception
+                ProcessException(DoEx, Token, "missing data downloading error")
+            Finally
+                ' Bounds guard: _ContentList can shrink if the user is disposed mid-run.
+                If rList.Count > 0 Then
+                    For n% = rList.Count - 1 To 0 Step -1
+                        If rList(n) < _ContentList.Count Then _ContentList.RemoveAt(rList(n))
+                    Next
+                End If
+                UpdateResponser()
+            End Try
+        End Sub
+#End Region
 #Region "Standalone downloader"
         Protected Overrides Sub DownloadSingleObject_GetPosts(ByVal Data As IYouTubeMediaContainer, ByVal Token As CancellationToken)
             Dim PID$ = RegexReplace(Data.URL, RParams.DMS(String.Format(UserRegexDefaultPattern, "instagram.com/p/"), 1))
