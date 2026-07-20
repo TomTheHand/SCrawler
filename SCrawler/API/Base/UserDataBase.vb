@@ -1970,6 +1970,11 @@ stxt:
                                             End If
                                         End If
                                         If textTargetOk Then dCount += 1
+                                        ' Stamp file dates with the post date so a date-sorted folder follows post
+                                        ' chronology (independent of download order). Covers the media file and any
+                                        ' text sidecar; no-ops for date-less items or files removed by dedup.
+                                        SetContentFileDate(v.File, v.Post.Date)
+                                        SetContentFileDate(v.PostTextFile, v.Post.Date)
                                     Catch anex As ArgumentNullException When anex.HelpLink = 10
                                         LogError(anex, anex.Message, Settings.FeedShowTextPosts_LogErrors_E)
                                     Catch woex As OperationCanceledException When Token.IsCancellationRequested
@@ -2033,6 +2038,27 @@ stxt:
             Return MyFile.CutPath(IIf(IsSingleObjectDownload, 0, 1)).PathNoSeparator
         End Function
         Protected Overridable Sub DownloadContentDefault_PostProcessing(ByRef m As UserMedia, ByVal File As SFile, ByVal Token As CancellationToken)
+        End Sub
+        ''' <summary>
+        ''' Stamps a downloaded file's Created and Modified timestamps with the post's date, so a folder
+        ''' sorted by date reflects post chronology. Uses <see cref="UserPost.Date"/> (the API-reported
+        ''' post time), which is both more meaningful and more reliable than the CDN's HTTP Last-Modified
+        ''' header (often the object's cache/processing time, and not cleanly retrievable through the
+        ''' download client anyway). No-ops when the item has no date (it keeps its download time), the
+        ''' file is gone (e.g. removed by MD5 de-duplication), or the OS rejects the value.
+        ''' </summary>
+        Protected Shared Sub SetContentFileDate(ByVal f As SFile, ByVal PostDate As Date?)
+            Try
+                If PostDate.HasValue AndAlso Not f.IsEmptyString AndAlso f.Exists Then
+                    Dim d As Date = PostDate.Value
+                    ' FILETIME/NTFS cannot represent dates before 1601 — guard a garbage-parsed value.
+                    If d.Year > 1601 Then
+                        System.IO.File.SetCreationTime(f, d)
+                        System.IO.File.SetLastWriteTime(f, d)
+                    End If
+                End If
+            Catch
+            End Try
         End Sub
         Protected Overridable Function DownloadContentDefault_ConvertWebp(ByVal m As UserMedia, ByVal Process As Boolean) As SFile
             Return DownloadContentDefault_ConvertWebp_Impl(m, Process)

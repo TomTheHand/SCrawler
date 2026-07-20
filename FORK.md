@@ -21,6 +21,9 @@ projects, and the remaining site modules.
 - **Network circuit breaker**: repeated DNS failures (connection loss/saturation) pause the
   download queue and probe for connectivity instead of burning through every queued user with
   guaranteed-failure requests.
+- **Chronological file dates**: downloaded files get their Created/Modified timestamps set to the
+  post's own date (from the site API), and content downloads oldest-post-first. Sort any download
+  folder by date and it reads in posting order.
 
 ## Fix highlights
 

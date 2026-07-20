@@ -367,6 +367,16 @@ Pre-ledger work (earlier sessions, already committed to fork):
   FilesSnapshot/FilesRemoveAll/FilesClear/FilesLocked.
 - `bed3d11` — Chunk 5.5: Instagram ReparseMissing override (user-approved feature) — see the
   chunk-5.5 Reviewed section for design details.
+- *(this commit)* — Post-review feature (user request): **file timestamps set to the post date**.
+  New `UserDataBase.SetContentFileDate(f, PostDate)` stamps a downloaded file's Created + Modified
+  time with `UserPost.Date` (already parsed from every site's API — Reddit `created`, RedGifs
+  `createDate`, IG `taken_at`, TikTok `createTime`), called at the download-completion point in
+  `DownloadContentDefault` for the media file + any text sidecar. Makes date-sorted folders match
+  post chronology independent of download order. Chose post date over the literal HTTP Last-Modified:
+  the CDN header is not cleanly retrievable through the closed-source download client (`WebClient2`
+  captures no response headers) and often reflects cache/processing time, not post time. No-ops on
+  date-less items (keep download time), deduped files, or OS-rejected values (year ≤ 1601 guard);
+  wrapped in try/catch so a timestamp failure never disturbs the download. Global default per user.
 - *(this commit)* — Post-review feature (user request): download content **oldest-first**. Sites
   discover newest-first, so `_ContentNew` was assembled + downloaded newest→oldest; now reversed
   once in `UserDataBase.DownloadData` (non-subscription branch, before `DownloadContent`) so oldest
