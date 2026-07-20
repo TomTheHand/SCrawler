@@ -367,7 +367,19 @@ Pre-ledger work (earlier sessions, already committed to fork):
   FilesSnapshot/FilesRemoveAll/FilesClear/FilesLocked.
 - `bed3d11` — Chunk 5.5: Instagram ReparseMissing override (user-approved feature) — see the
   chunk-5.5 Reviewed section for design details.
-- *(this commit)* — Post-review (user request): cooldown/pause events now go to the ACTIVITY LOG,
+- *(this commit)* — Post-review feature (user request): download content **oldest-first**. Sites
+  discover newest-first, so `_ContentNew` was assembled + downloaded newest→oldest; now reversed
+  once in `UserDataBase.DownloadData` (non-subscription branch, before `DownloadContent`) so oldest
+  posts hit disk first (file timestamps follow post chronology; filenames unaffected — URL-derived).
+  `DownloadTopCount` ("newest N") preserved by trimming to the newest N (front of the list) BEFORE
+  reversing, since `DownloadContentDefault` enforces the limit in list order. Scope: all normal
+  timeline sites (incl. Reddit/RedGifs/Instagram/TikTok); subscription sites (OnlyFans/JFF/etc.)
+  deliberately untouched — their `_ContentNew` is doubled with Downloaded copies, which a flat
+  reverse would interleave. Chosen as global default (no toggle) per user. Minor accepted nuances:
+  (a) within one gallery post, image order flips too (same instant — chronologically irrelevant);
+  (b) `DownloadTopCount` with mid-batch failures now attempts at most the newest N rather than
+  topping up from older posts to reach N successes.
+- `612ebbf` — Post-review (user request): cooldown/pause events now go to the ACTIVITY LOG,
   not MyMainLOG — convention: MyMainLOG = errors, ActivityLog = live health. Moved: Instagram
   Ready() rate-limit wait + NextRequest self-throttle, Reddit Wait429 self-throttle (these three
   were review-era MyMainLOG additions). NetworkBreaker trip/restore/give-up now ALSO write activity

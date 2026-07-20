@@ -1356,6 +1356,22 @@ BlockNullPicture:
                                                                             Return tmpC
                                                                         End Function))
                 Else
+                    ' Download oldest-first. Every site's timeline API returns posts newest-first, so
+                    ' _ContentNew is assembled newest->oldest; reversing it makes the oldest post download
+                    ' first, so on-disk file timestamps follow post chronology (sort a folder by date =
+                    ' chronological). Filenames are unaffected — they come from the source URL, not the
+                    ' download order. Reversal is at the post level; images within one gallery post flip
+                    ' order too, but they share a post (same instant) so it's chronologically irrelevant.
+                    ' DownloadTopCount means "the newest N posts", and DownloadContentDefault enforces it
+                    ' by stopping after N downloads in list order — so trim to the newest N (they're at the
+                    ' FRONT here) BEFORE reversing, otherwise "top N" would become the OLDEST N. Trimming is
+                    ' persistence-safe: only Downloaded/Missing items are recorded (see _ContentList below),
+                    ' and the trimmed overflow was never going to be downloaded this run anyway.
+                    If _ContentNew.Count > 1 Then
+                        If DownloadTopCount.HasValue AndAlso DownloadTopCount.Value > 0 AndAlso _ContentNew.Count > DownloadTopCount.Value Then _
+                            _ContentNew.RemoveRange(DownloadTopCount.Value, _ContentNew.Count - DownloadTopCount.Value)
+                        _ContentNew.Reverse()
+                    End If
                     DownloadContent(Token)
                     ThrowIfDisposed()
                 End If
