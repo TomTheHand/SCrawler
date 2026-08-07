@@ -97,7 +97,7 @@ Namespace API.Pinterest
             Return New EditorExchangeOptions(Me)
         End Function
         Friend Overrides Sub ExchangeOptionsSet(ByVal Obj As Object)
-            If Not Obj Is Nothing AndAlso TypeOf Obj Is EditorExchangeOptions Then ExtractSubBoards = DirectCast(Obj, EditorExchangeOptions).ExtractSubBoards
+            If Not Obj Is Nothing AndAlso TypeOf Obj Is EditorExchangeOptions Then DirectCast(Obj, EditorExchangeOptions).Apply(Me)
         End Sub
 #End Region
 #Region "Download overrides"

@@ -7,6 +7,8 @@
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY
 Imports PersonalUtilities.Functions.RegularExpressions
+Imports PersonalUtilities.Tools.Web.Cookies
+Imports PersonalUtilities.Tools.Web.Clients
 Namespace API.ThisVid
     Friend Module Declarations
         Friend Const ThisVidSiteKey As String = "AndyProgram_ThisVid"
@@ -22,5 +24,27 @@ Namespace API.ThisVid
         Friend ReadOnly RegExVideosThumb1 As RParams = RParams.DMS("preview_url:\s*'([^""']+)'", 1, EDP.ReturnValue)
         Friend ReadOnly RegExVideosThumb2 As RParams = RParams.DMS("preview_url1:\s*'([^""']+)'", 1, EDP.ReturnValue)
         Friend ReadOnly RegExVideoTitle As RParams = RParams.DMS("meta property=.og:title..content=""([^""]*)""", 1, EDP.ReturnValue)
+        Friend Class CookieKeeper2 : Inherits CookieKeeper
+            Public Overrides Function Update(Optional ByVal e As ErrorsDescriber = Nothing) As Boolean
+                If Count > 0 Then
+                    If Not ConvertToContainer(_Container, CookieList, EDP.ReturnValue) Then CookieList.RemoveAt(CookieList.Count - 1) Else Return True
+                End If
+                Return MyBase.Update(e)
+            End Function
+        End Class
+        Friend Class Responser2 : Inherits Responser
+            Friend Sub New()
+                MyBase.New
+                ChangeCookieKeeper()
+            End Sub
+            Friend Sub New(ByVal f As SFile)
+                MyBase.New(f)
+                ChangeCookieKeeper()
+            End Sub
+            Private Sub ChangeCookieKeeper()
+                _Cookies = New CookieKeeper2
+                Reset()
+            End Sub
+        End Class
     End Module
 End Namespace

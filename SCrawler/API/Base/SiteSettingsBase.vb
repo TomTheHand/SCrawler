@@ -53,7 +53,12 @@ Namespace API.Base
             End Get
         End Property
         Private Property Logger As ILogProvider = LogConnector Implements ISiteSettings.Logger
-        Friend Overridable ReadOnly Property Responser As Responser
+        Protected _Responser As Responser = Nothing
+        Friend ReadOnly Property Responser As Responser
+            Get
+                Return _Responser
+            End Get
+        End Property
         Private _UserOptionsExists As Boolean = False
         Private _UserOptionsType As Type = Nothing
         Protected Overridable Function UserOptionsValid(ByVal Options As Object) As Boolean
@@ -122,6 +127,11 @@ Namespace API.Base
             _CookiesNetscapeFile.Name &= "_Cookies_Netscape"
             _CookiesNetscapeFile.Extension = "txt"
         End Sub
+        Protected Overridable Sub ChangeResponserOnInit()
+        End Sub
+        Friend Overridable Function GetCookieKeeperInstance() As CookieKeeper
+            Return New CookieKeeper
+        End Function
 #End Region
 #Region "GetInstance"
         Friend MustOverride Function GetInstance(ByVal What As Download) As IPluginContentProvider Implements ISiteSettings.GetInstance
@@ -131,7 +141,8 @@ Namespace API.Base
             Site = SiteName
             _Icon = __Icon
             _Image = __Image
-            Responser = New Responser With {.DeclaredError = EDP.ThrowException}
+            _Responser = New Responser With {.DeclaredError = EDP.ThrowException}
+            ChangeResponserOnInit()
             SettingsVersion = New PropertyValue(0)
             DownloadText = New PropertyValue(False)
             DownloadTextPosts = New PropertyValue(False)

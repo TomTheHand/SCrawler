@@ -35,6 +35,9 @@ Namespace DownloadObjects
         Private WithEvents BTT_SELECT_ALL_T As ToolStripButton
         Private WithEvents BTT_SELECT_NONE_T As ToolStripButton
         Private WithEvents BTT_INVERT_T As ToolStripButton
+        Private WithEvents BTT_LOAD_CURRENT_T As ToolStripButton
+        Private WithEvents BTT_LOAD_FAV_T As ToolStripButton
+        Private WithEvents BTT_LOAD_T As ToolStripDropDownButton
 #End Region
         Private DataRows As Integer = 10
         Private DataColumns As Integer = 1
@@ -74,8 +77,10 @@ Namespace DownloadObjects
                 If Not CurrentFilter Is Nothing Then
                     With CurrentFilter
                         If .Types.Count > 0 AndAlso Not .Types.Any(Function(t) FilterTypesConversion(t, d)) Then Return False
-#Disable Warning BC42109
+#Disable Warning BC42109, BC42104
+                        If .Sites.Count > 0 AndAlso Not .Sites.Contains(d.UserInfo.Site) Then Return False
                         If .Users.Count > 0 AndAlso Not .Users.Contains(d.UserInfo) Then Return False
+                        If .Labels.Count > 0 AndAlso d.User.Labels.Count > 0 AndAlso Not d.User.Labels.ListContains(.Labels) Then Return False
 #Enable Warning
                     End With
                 End If
@@ -188,6 +193,7 @@ Namespace DownloadObjects
                 .Image = My.Resources.CutPic_48,
                 .DisplayStyle = ToolStripItemDisplayStyle.ImageAndText
             }
+
             BTT_FAV_T = New ToolStripButton With {
                 .Text = "Favorite",
                 .AutoToolTip = True,
@@ -202,6 +208,29 @@ Namespace DownloadObjects
                 .Image = My.Resources.RSSPic_512,
                 .DisplayStyle = ToolStripItemDisplayStyle.ImageAndText
             }
+
+            BTT_LOAD_CURRENT_T = New ToolStripButton With {
+                .Text = "Current",
+                .AutoToolTip = True,
+                .ToolTipText = "Load current feed",
+                .Image = My.Resources.ArrowDownPic_Blue_24,
+                .DisplayStyle = ToolStripItemDisplayStyle.ImageAndText
+            }
+            BTT_LOAD_FAV_T = New ToolStripButton With {
+                .Text = "Favorite",
+                .AutoToolTip = True,
+                .ToolTipText = "Load Favorite",
+                .Image = My.Resources.HeartPic_32,
+                .DisplayStyle = ToolStripItemDisplayStyle.ImageAndText
+            }
+            BTT_LOAD_T = New ToolStripDropDownButton With {
+                .Text = "Load",
+                .AutoToolTip = True,
+                .ToolTipText = "Load special feed..." & vbCr & "Right click to load multiple feeds",
+                .Image = My.Resources.RSSPic_512,
+                .DisplayStyle = ToolStripItemDisplayStyle.ImageAndText
+            }
+
             BTT_SELECT_ALL_T = New ToolStripButton With {
                 .Text = "All",
                 .AutoToolTip = True,
@@ -220,7 +249,6 @@ Namespace DownloadObjects
                 .ToolTipText = "Invert selection",
                 .DisplayStyle = ToolStripItemDisplayStyle.Text
             }
-
             FILTERS = New FeedFilterCollection
             BTT_FILTER.Image = My.Resources.FilterPic
             BTT_FILTER_SIMPLE.Image = My.Resources.FilterPic
@@ -249,16 +277,24 @@ Namespace DownloadObjects
                 ToolbarTOP.Items.AddRange({New ToolStripSeparator, BTT_DELETE_SELECTED,
                                            New ToolStripSeparator, BTT_COPY_SELECTED_T, BTT_MOVE_SELECTED_T,
                                            New ToolStripSeparator, BTT_FAV_T, BTT_FEED_ADD_T,
+                                           New ToolStripSeparator, BTT_LOAD_CURRENT_T, BTT_LOAD_FAV_T, BTT_LOAD_T,
                                            New ToolStripSeparator, BTT_SELECT_ALL_T, BTT_SELECT_NONE_T, BTT_INVERT_T})
                 With Settings
                     With .Feeds
                         .Load()
                         AddHandler .FeedAdded, AddressOf Feed_FeedAdded
                         AddHandler .FeedRemoved, AddressOf Feed_FeedRemoved
+                        If .Count = 0 OrElse (.Count = 1 AndAlso .Item(0).IsFavorite) Then
+                            BTT_FEED_ADD_T.Enabled = False
+                            BTT_FEED_ADD_T.Visible = False
+                            BTT_LOAD_T.Enabled = False
+                            BTT_LOAD_T.Visible = False
+                        End If
                         If .Count > 0 Then
                             For Each feed As FeedSpecial In .Self
                                 If Not feed.IsFavorite Then
                                     AddNewFeedItem(BTT_LOAD_SPEC, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_LOAD)
+                                    AddNewFeedItem(BTT_LOAD_T, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_LOAD)
                                     AddNewFeedItem(BTT_FEED_ADD_SPEC, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD)
                                     AddNewFeedItem(BTT_FEED_ADD_T, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD)
                                     AddNewFeedItem(BTT_FEED_ADD_SPEC_REMOVE, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD_REMOVE)
@@ -542,7 +578,7 @@ Namespace DownloadObjects
 #Region "Toolbar controls"
 #Region "Feed"
 #Region "Load"
-        Private Sub BTT_LOAD_SESSION_CURRENT_Click(sender As Object, e As EventArgs) Handles BTT_LOAD_SESSION_CURRENT.Click
+        Private Sub BTT_LOAD_SESSION_CURRENT_Click(sender As Object, e As EventArgs) Handles BTT_LOAD_SESSION_CURRENT.Click, BTT_LOAD_CURRENT_T.Click
             FeedChangeMode(FeedModes.Current)
             RefillList(True, False)
         End Sub
@@ -1030,9 +1066,12 @@ Namespace DownloadObjects
         End Sub
 #End Region
 #Region "Load fav, spec"
-        Private Sub BTT_LOAD_FAV_Click(sender As Object, e As EventArgs) Handles BTT_LOAD_FAV.Click
+        Private Sub BTT_LOAD_FAV_Click(sender As Object, e As EventArgs) Handles BTT_LOAD_FAV.Click, BTT_LOAD_FAV_T.Click
             FeedChangeMode(FeedModes.Special, {FeedSpecial.FavoriteName})
             RefillSpecialFeedsData(False)
+        End Sub
+        Private Sub BTT_LOAD_T_MouseDown(sender As Object, e As MouseEventArgs) Handles BTT_LOAD_T.MouseDown
+            If e.Button = MouseButtons.Right Then BTT_LOAD_SPEC_Click(sender, e)
         End Sub
         Private Sub BTT_LOAD_SPEC_Click(sender As Object, e As EventArgs) Handles BTT_LOAD_SPEC.Click
             With FeedSpecialCollection.ChooseFeeds(False)

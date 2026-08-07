@@ -66,7 +66,7 @@ Namespace API.OnlyFans
         Friend Overrides Sub ExchangeOptionsSet(ByVal Obj As Object)
             If Not Obj Is Nothing AndAlso TypeOf Obj Is UserExchangeOptions Then
                 With DirectCast(Obj, UserExchangeOptions)
-                    .ApplyBase(Me)
+                    .Apply(Me)
                     MediaDownloadTimeline = .DownloadTimeline
                     MediaDownloadStories = .DownloadStories
                     MediaDownloadHighlights = .DownloadHighlights

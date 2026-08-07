@@ -136,7 +136,7 @@ Namespace API.Reddit
                     DownloadTextSpecialFolder = .DownloadTextSpecialFolder
                     RedGifsAccount = .RedGifsAccount
                     RedditAccount = .RedditAccount
-                    If TypeOf Options Is RedditViewExchange Then DirectCast(Options, RedditViewExchange).ApplyBase(Me)
+                    If TypeOf Options Is RedditViewExchange Then DirectCast(Options, RedditViewExchange).Apply(Me)
                 End With
             End If
         End Sub
@@ -1022,11 +1022,11 @@ Namespace API.Reddit
                                             If .ListExists AndAlso ParseContainer(.Self, m.Post.ID, String.Empty,,, GetTextDocument(.Self)) Then
                                                 If lastCount <> _TempMediaList.Count Then
                                                     For li = IIf(lastCount < 0, 0, lastCount) To _TempMediaList.Count - 1
-                                                        m2 = _TempMediaList(i)
+                                                        m2 = _TempMediaList(li)
                                                         m2.Post.Date = m.Post.Date
                                                         m2.State = UStates.Missing
                                                         m2.Attempts = m.Attempts
-                                                        _TempMediaList(i) = m2
+                                                        _TempMediaList(li) = m2
                                                     Next
                                                 End If
                                                 rList.Add(i)

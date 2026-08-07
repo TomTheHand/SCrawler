@@ -150,6 +150,8 @@ Namespace API.Instagram
         Friend ReadOnly Property USE_GQL As PropertyValue
         <PropertyOption(ControlText:="Use GraphQL to download user data", IsAuth:=True), PXML, PClonable, HiddenControl>
         Friend ReadOnly Property USE_GQL_UserData As PropertyValue
+        <PropertyOption(ControlText:="Use GraphQL to download user stories (highlights)", IsAuth:=True), PXML, PClonable, HiddenControl>
+        Friend ReadOnly Property USE_GQL_Highlights As PropertyValue
 #End Region
 #Region "Download data"
         <PropertyOption(ControlText:="Download timeline", Category:=CAT_DOWN), PXML, PClonable>
@@ -496,6 +498,7 @@ Namespace API.Instagram
             TokenUpdateIntervalProvider = New TokenRefreshIntervalProvider
             USE_GQL = New PropertyValue(False)
             USE_GQL_UserData = New PropertyValue(True)
+            USE_GQL_Highlights = New PropertyValue(True)
 
             DownloadTimeline = New PropertyValue(True)
             DownloadTimeline_Def = New PropertyValue(DownloadTimeline.Value, GetType(Boolean))

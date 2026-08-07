@@ -30,6 +30,8 @@ Namespace DownloadObjects
             Dim resources As System.ComponentModel.ComponentResourceManager = New System.ComponentModel.ComponentResourceManager(GetType(FeedFilterForm))
             Dim ActionButton2 As PersonalUtilities.Forms.Controls.Base.ActionButton = New PersonalUtilities.Forms.Controls.Base.ActionButton()
             Dim ActionButton3 As PersonalUtilities.Forms.Controls.Base.ActionButton = New PersonalUtilities.Forms.Controls.Base.ActionButton()
+            Dim ActionButton4 As PersonalUtilities.Forms.Controls.Base.ActionButton = New PersonalUtilities.Forms.Controls.Base.ActionButton()
+            Dim ActionButton5 As PersonalUtilities.Forms.Controls.Base.ActionButton = New PersonalUtilities.Forms.Controls.Base.ActionButton()
             Me.TP_MAIN = New System.Windows.Forms.TableLayoutPanel()
             Me.CH_T_ALL = New System.Windows.Forms.CheckBox()
             Me.CH_T_IMG = New System.Windows.Forms.CheckBox()
@@ -43,6 +45,7 @@ Namespace DownloadObjects
             Me.LIST_USERS = New System.Windows.Forms.CheckedListBox()
             Me.TXT_NAME = New PersonalUtilities.Forms.Controls.TextBoxExtended()
             Me.TXT_SITE = New PersonalUtilities.Forms.Controls.TextBoxExtended()
+            Me.TXT_LABELS = New PersonalUtilities.Forms.Controls.TextBoxExtended()
             CONTAINER_MAIN = New System.Windows.Forms.ToolStripContainer()
             TP_TYPES = New System.Windows.Forms.TableLayoutPanel()
             TP_USERS = New System.Windows.Forms.TableLayoutPanel()
@@ -55,6 +58,7 @@ Namespace DownloadObjects
             TP_USERS_2.SuspendLayout()
             CType(Me.TXT_NAME, System.ComponentModel.ISupportInitialize).BeginInit()
             CType(Me.TXT_SITE, System.ComponentModel.ISupportInitialize).BeginInit()
+            CType(Me.TXT_LABELS, System.ComponentModel.ISupportInitialize).BeginInit()
             Me.SuspendLayout()
             '
             'CONTAINER_MAIN
@@ -78,15 +82,17 @@ Namespace DownloadObjects
             Me.TP_MAIN.ColumnCount = 1
             Me.TP_MAIN.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100.0!))
             Me.TP_MAIN.Controls.Add(TP_TYPES, 0, 1)
-            Me.TP_MAIN.Controls.Add(TP_USERS, 0, 3)
+            Me.TP_MAIN.Controls.Add(TP_USERS, 0, 4)
             Me.TP_MAIN.Controls.Add(Me.TXT_NAME, 0, 0)
             Me.TP_MAIN.Controls.Add(Me.TXT_SITE, 0, 2)
+            Me.TP_MAIN.Controls.Add(Me.TXT_LABELS, 0, 3)
             Me.TP_MAIN.Dock = System.Windows.Forms.DockStyle.Fill
             Me.TP_MAIN.Location = New System.Drawing.Point(0, 0)
             Me.TP_MAIN.Name = "TP_MAIN"
-            Me.TP_MAIN.RowCount = 4
+            Me.TP_MAIN.RowCount = 5
             Me.TP_MAIN.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 28.0!))
             Me.TP_MAIN.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 25.0!))
+            Me.TP_MAIN.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 28.0!))
             Me.TP_MAIN.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 28.0!))
             Me.TP_MAIN.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100.0!))
             Me.TP_MAIN.Size = New System.Drawing.Size(522, 336)
@@ -178,13 +184,13 @@ Namespace DownloadObjects
             TP_USERS.Controls.Add(TP_USERS_2, 0, 0)
             TP_USERS.Controls.Add(Me.LIST_USERS, 0, 1)
             TP_USERS.Dock = System.Windows.Forms.DockStyle.Fill
-            TP_USERS.Location = New System.Drawing.Point(0, 81)
+            TP_USERS.Location = New System.Drawing.Point(0, 109)
             TP_USERS.Margin = New System.Windows.Forms.Padding(0)
             TP_USERS.Name = "TP_USERS"
             TP_USERS.RowCount = 2
             TP_USERS.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 25.0!))
             TP_USERS.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100.0!))
-            TP_USERS.Size = New System.Drawing.Size(522, 255)
+            TP_USERS.Size = New System.Drawing.Size(522, 227)
             TP_USERS.TabIndex = 3
             '
             'TP_USERS_2
@@ -206,7 +212,7 @@ Namespace DownloadObjects
             TP_USERS_2.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100.0!))
             TP_USERS_2.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 25.0!))
             TP_USERS_2.Size = New System.Drawing.Size(522, 25)
-            TP_USERS_2.TabIndex = 0
+            TP_USERS_2.TabIndex = 4
             '
             'CH_U_USE
             '
@@ -258,8 +264,8 @@ Namespace DownloadObjects
             Me.LIST_USERS.FormattingEnabled = True
             Me.LIST_USERS.Location = New System.Drawing.Point(3, 28)
             Me.LIST_USERS.Name = "LIST_USERS"
-            Me.LIST_USERS.Size = New System.Drawing.Size(516, 224)
-            Me.LIST_USERS.TabIndex = 1
+            Me.LIST_USERS.Size = New System.Drawing.Size(516, 196)
+            Me.LIST_USERS.TabIndex = 5
             '
             'TXT_NAME
             '
@@ -298,6 +304,25 @@ Namespace DownloadObjects
             Me.TXT_SITE.TabIndex = 2
             Me.TXT_SITE.TextBoxReadOnly = True
             '
+            'TXT_LABELS
+            '
+            ActionButton4.BackgroundImage = CType(resources.GetObject("ActionButton4.BackgroundImage"), System.Drawing.Image)
+            ActionButton4.Name = "Edit"
+            ActionButton4.Tag = PersonalUtilities.Forms.Controls.Base.ActionButton.DefaultButtons.Edit
+            ActionButton5.BackgroundImage = CType(resources.GetObject("ActionButton5.BackgroundImage"), System.Drawing.Image)
+            ActionButton5.Name = "Clear"
+            ActionButton5.Tag = PersonalUtilities.Forms.Controls.Base.ActionButton.DefaultButtons.Clear
+            Me.TXT_LABELS.Buttons.Add(ActionButton4)
+            Me.TXT_LABELS.Buttons.Add(ActionButton5)
+            Me.TXT_LABELS.CaptionText = "Labels"
+            Me.TXT_LABELS.CaptionWidth = 40.0R
+            Me.TXT_LABELS.Dock = System.Windows.Forms.DockStyle.Fill
+            Me.TXT_LABELS.Location = New System.Drawing.Point(3, 84)
+            Me.TXT_LABELS.Name = "TXT_LABELS"
+            Me.TXT_LABELS.Size = New System.Drawing.Size(516, 22)
+            Me.TXT_LABELS.TabIndex = 3
+            Me.TXT_LABELS.TextBoxReadOnly = True
+            '
             'FeedFilterForm
             '
             Me.AutoScaleDimensions = New System.Drawing.SizeF(6.0!, 13.0!)
@@ -317,6 +342,7 @@ Namespace DownloadObjects
             TP_USERS_2.PerformLayout()
             CType(Me.TXT_NAME, System.ComponentModel.ISupportInitialize).EndInit()
             CType(Me.TXT_SITE, System.ComponentModel.ISupportInitialize).EndInit()
+            CType(Me.TXT_LABELS, System.ComponentModel.ISupportInitialize).EndInit()
             Me.ResumeLayout(False)
 
         End Sub
@@ -333,5 +359,6 @@ Namespace DownloadObjects
         Private WithEvents TXT_NAME As PersonalUtilities.Forms.Controls.TextBoxExtended
         Private WithEvents TP_MAIN As TableLayoutPanel
         Private WithEvents TXT_SITE As PersonalUtilities.Forms.Controls.TextBoxExtended
+        Private WithEvents TXT_LABELS As PersonalUtilities.Forms.Controls.TextBoxExtended
     End Class
 End Namespace

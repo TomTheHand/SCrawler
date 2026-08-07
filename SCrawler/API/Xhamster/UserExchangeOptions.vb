@@ -13,7 +13,6 @@ Namespace API.Xhamster
         <PSetting(Address:=SettingAddress.User, Caption:=SiteSettings.GetMomentsCaption)>
         Friend Property GetMoments As Boolean = False
         Friend Sub New()
-            MyBase.New
         End Sub
         Friend Sub New(ByVal u As IPSite)
             MyBase.New(DirectCast(u, UserData))

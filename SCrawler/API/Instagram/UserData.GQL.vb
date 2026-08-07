@@ -37,11 +37,11 @@ Namespace API.Instagram
         Friend Const GQL_HEADER_ROOT_FIELD_NAME_Value As String = "fetch__XDTUserDict"
 #End Region
 #Region "Data constants"
-        Private Const GQL_UserData_DocId As String = "35710877621861450" '"7381344031985950"
+        Private Const GQL_UserData_DocId As String = "26672929172408668" '"35710877621861450" '"7381344031985950"
         Private Const GQL_UserData_FbFriendlyName As String = "PolarisProfilePageContentQuery"
 
-        Private Const GQL_Highlights_DocId As String = "8298007123561120"
-        Private Const GQL_Highlights_DocId_Second As String = "7559771384111300"
+        Private Const GQL_Highlights_DocId As String = "36997000523232338" '"8298007123561120"
+        Private Const GQL_Highlights_DocId_Second As String = "27618287167780519" '"7559771384111300"
         Private Const GQL_Highlights_FbFriendlyName As String = "PolarisProfileStoryHighlightsTrayContentQuery"
         Private Const GQL_Highlights_FbFriendlyName_Second As String = "PolarisStoriesV3HighlightsPageQuery"
 
@@ -82,6 +82,7 @@ Namespace API.Instagram
         End Sub
         '<Obsolete("Use 'GET' function: 'GetUserData'", False)>
         Private Function GetUserDataGQL(ByVal Token As CancellationToken) As String
+            UpdateTokens(Not ValidateBaseTokens())
             'Dim vars$ = String.Format(GQL_URL_PATTERN_VARS, GQL_UserData_DocId, Token_lsd, Token_dtsg_Var, GQL_UserData_FbFriendlyName,
             '                          SymbolsConverter.ASCII.EncodeSymbolsOnly("{" & $"""id"":""{ID}"",""relay_header"":false,""render_surface"":""PROFILE""" & "}"))
             Dim vars$ = String.Format(GQL_URL_PATTERN_VARS, GQL_UserData_DocId, Token_lsd, Token_dtsg_Var, GQL_UserData_FbFriendlyName,
@@ -121,6 +122,7 @@ Namespace API.Instagram
             Dim vars$
 
             ThrowAny(Token)
+            UpdateTokens(Not ValidateBaseTokens())
             UpdateRequestNumber()
             ChangeResponserMode(True)
 
@@ -170,7 +172,7 @@ Namespace API.Instagram
             Return If(hasNextPage And (Not nextCursor.IsEmptyString AndAlso Not nextCursor.StringToLower = none_cursor), nextCursor, String.Empty)
         End Function
         Private Function GetHighlightsGQL_List() As List(Of String)
-
+            UpdateTokens(Not ValidateBaseTokens())
             Dim nextCursor$ = String.Empty
             Dim hasNextPage As Boolean = False
             Dim i% = -1
@@ -206,7 +208,7 @@ Namespace API.Instagram
             Return hList
         End Function
         Private Sub GetHighlightsGQL(ByRef StoriesList As List(Of String), ByVal Token As CancellationToken)
-            Const highlightData$ = """first"":50,""initial_reel_id"":""{0}"",""last"":2,""reel_ids"":[{1}]"
+            Const highlightData$ = """initial_reel_id"":""{0}"",""reel_ids"":[{1}],""first"":50,""last"":2,""__relay_internal__pv__PolarisCommunityNoteStoriesLabelEnabledrelayprovider"":true"
             Dim tmpList As New List(Of String)
             Dim i% = -1
             If StoriesList.ListExists Then
@@ -214,6 +216,7 @@ Namespace API.Instagram
                 'tmpList.AddRange(StoriesList.Take(10))
                 tmpList.AddRange(StoriesList.Take(5))
                 StoriesList.RemoveRange(0, tmpList.Count)
+                UpdateTokens(Not ValidateBaseTokens())
 
                 Dim vars$ = String.Format(GQL_URL_PATTERN_VARS, GQL_Highlights_DocId_Second, Token_lsd, Token_dtsg_Var, GQL_Highlights_FbFriendlyName_Second,
                                           SymbolsConverter.ASCII.EncodeSymbolsOnly("{" & String.Format(highlightData, tmpList(0), tmpList.Select(Function(hl) $"""{hl}""").ListToString(",")) & "}"))
@@ -240,6 +243,7 @@ Namespace API.Instagram
             tmpList.Clear()
         End Sub
         Private Sub GetUserStoriesGQL(ByVal Token As CancellationToken)
+            UpdateTokens(Not ValidateBaseTokens())
             '"{" & $"""user_id"":""{ID}""" & "}"
             Dim vars$ = String.Format(GQL_URL_PATTERN_VARS, GQL_UserStories_DocId, Token_lsd, Token_dtsg_Var, GQL_UserStories_FbFriendlyName,
                                       SymbolsConverter.ASCII.EncodeSymbolsOnly("{" & $"""reel_ids_arr"":[""{ID}""]" & "}"))
@@ -272,7 +276,7 @@ Namespace API.Instagram
         Private Function GetReelsGQL(ByVal Cursor As String) As String
             GetReelsGQL_SetEnvir = True
 
-            UpdateTokens(Cursor.IsEmptyString)
+            UpdateTokens(Cursor.IsEmptyString Or Not ValidateBaseTokens())
 
             Dim vars$ = """data"":{""include_feed_video"":true,""page_size"":" & PostNumberPerRequest & ",""target_user_id"":""" & ID & """}"
             If Not Cursor.IsEmptyString Then vars = $"""after"":""{Cursor}"",""before"":null,{vars},""first"":4,""last"":null"
@@ -285,6 +289,7 @@ Namespace API.Instagram
         End Function
         ''' <summary>Response</summary>
         Private Function GetTaggedGQL(ByVal Cursor As String) As String
+            UpdateTokens(Not ValidateBaseTokens())
             'default count = 12
             'max count = 21
             Dim vars$
@@ -335,7 +340,12 @@ Namespace API.Instagram
                         .Add(HttpHeaderCollection.GetSpecialHeader(MyHeaderTypes.SecFetchMode, "navigate"))
                     End With
                 End With
-                Dim r$ = Responser.GetResponse(MySiteSettings.GetUserUrl(Me))
+                Dim r$
+                If UserNameRequested Then
+                    r = Responser.GetResponse("https://www.instagram.com/")
+                Else
+                    r = Responser.GetResponse(MySiteSettings.GetUserUrl(Me))
+                End If
                 ParseTokens(r, 0)
             Catch ex As Exception
             Finally

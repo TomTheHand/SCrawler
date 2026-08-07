@@ -250,7 +250,14 @@ Namespace Editors
             MyDefs = New DefaultFormOptions(Me, Settings.Design)
             Host = h
             CookiesControlsInteraction = New List(Of PropertyValueHost)
-            If Not Host.Responser Is Nothing Then Cookies = Host.Responser.Cookies.Copy
+            If Not Host.Source Is Nothing AndAlso TypeOf Host.Source Is API.Base.SiteSettingsBase Then Cookies = DirectCast(Host.Source, API.Base.SiteSettingsBase).GetCookieKeeperInstance
+            If Not Host.Responser Is Nothing Then
+                If Cookies Is Nothing Then
+                    Cookies = Host.Responser.Cookies.Copy
+                Else
+                    Cookies.Copy(Host.Responser.Cookies)
+                End If
+            End If
             LabelControls = New List(Of Label)
             Host.BeginEdit()
         End Sub

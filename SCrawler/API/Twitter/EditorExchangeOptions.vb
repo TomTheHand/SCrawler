@@ -66,6 +66,7 @@ Namespace API.Twitter
             MySettings = s
         End Sub
         Friend Sub New(ByVal s As Mastodon.SiteSettings)
+            MyBase.New(s)
             GifsDownload = s.GifsDownload.Value
             GifsSpecialFolder = s.GifsSpecialFolder.Value
             GifsPrefix = s.GifsPrefix.Value

@@ -8,7 +8,7 @@
 ' but WITHOUT ANY WARRANTY
 Imports SCrawler.Plugin.Attributes
 Namespace API.YouTube
-    Friend Class UserExchangeOptions
+    Friend Class UserExchangeOptions : Inherits SCrawler.API.Base.EditorExchangeOptionsBase
         <PSetting(Caption:="Download videos")>
         Friend Property DownloadVideos As Boolean
         <PSetting(Caption:="Download shorts")>
@@ -23,7 +23,14 @@ Namespace API.YouTube
         Friend Property UseCookies As Boolean
         <PSetting(Caption:="Channel ID", Address:=SettingAddress.User)>
         Friend Property ChannelID As String
+        <PSetting(Address:=SettingAddress.None)> Friend Overrides Property UserName As String
+        <PSetting(Address:=SettingAddress.None)> Friend Overrides Property DownloadText As Boolean
+        <PSetting(Address:=SettingAddress.None)> Friend Overrides Property DownloadTextPosts As Boolean
+        <PSetting(Address:=SettingAddress.None)> Friend Overrides Property DownloadTextSpecialFolder As Boolean
         Friend Sub New(ByVal u As UserData)
+            MyBase.New(u)
+            _ApplyBase_Name = False
+            _ApplyBase_Text = False
             DownloadVideos = u.DownloadYTVideos
             DownloadShorts = u.DownloadYTShorts
             DownloadPlaylists = u.DownloadYTPlaylists
@@ -33,6 +40,9 @@ Namespace API.YouTube
             ChannelID = u.ChannelID
         End Sub
         Friend Sub New(ByVal s As SiteSettings)
+            MyBase.New(s)
+            _ApplyBase_Name = False
+            _ApplyBase_Text = False
             DownloadVideos = s.DownloadVideos.Value
             DownloadShorts = s.DownloadShorts.Value
             DownloadPlaylists = s.DownloadPlaylists.Value

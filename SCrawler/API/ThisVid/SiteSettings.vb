@@ -50,6 +50,14 @@ Namespace API.ThisVid
             UrlPatternUser = "https://thisvid.com/members/{0}/"
             ImageVideoContains = "https://thisvid.com/videos/"
         End Sub
+        Protected Overrides Sub ChangeResponserOnInit()
+            _Responser.DisposeIfReady(False)
+            _Responser = Nothing
+            _Responser = New Responser2 With {.DeclaredError = EDP.ThrowException}
+        End Sub
+        Friend Overrides Function GetCookieKeeperInstance() As CookieKeeper
+            Return New CookieKeeper2
+        End Function
 #End Region
 #Region "GetInstance"
         Friend Overrides Function GetInstance(ByVal What As ISiteSettings.Download) As IPluginContentProvider

@@ -55,7 +55,7 @@ Namespace API.ThreadsNet
             Return New EditorExchangeOptionsBase(Me)
         End Function
         Friend Overrides Sub ExchangeOptionsSet(ByVal Obj As Object)
-            If Not Obj Is Nothing AndAlso TypeOf Obj Is EditorExchangeOptionsBase Then DirectCast(Obj, EditorExchangeOptionsBase).ApplyBase(Me)
+            If Not Obj Is Nothing AndAlso TypeOf Obj Is EditorExchangeOptionsBase Then DirectCast(Obj, EditorExchangeOptionsBase).Apply(Me)
         End Sub
 #End Region
 #Region "Initializer"
