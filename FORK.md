@@ -76,11 +76,27 @@ MSBuild.exe SCrawler.sln /p:Configuration=Release "/p:Platform=Any CPU" /t:Build
 
 The main executable lands in `SCrawler\bin\Release\SCrawler.exe`.
 
+The `lib\` DLLs are taken from an official release build and must match the upstream release this
+fork has merged (see below) — they are a versioned dependency, not a one-time copy.
+
 ## Tracking upstream
+
+Upstream publishes each release as a single squashed commit, so merges are release-sized but
+infrequent. Merge (don't rebase — rebasing 20+ commits over a squashed release is needless pain):
 
 ```powershell
 git fetch upstream
-git rebase upstream/main
+git merge upstream/main
 ```
+
+**Expect to refresh `lib\` as part of the merge.** Upstream builds against their own
+PersonalUtilities source and changes member accessibility between releases, so new upstream code
+often will not compile against older DLLs — the 2026.8.7.0 merge failed with a single
+`BC30451: '_Cookies' is not declared` until the DLLs were updated. Copy the three
+`PersonalUtilities*.dll` files from the root of that release's zip into `lib\`, then rebuild. When
+deploying, ship the refreshed DLLs alongside `SCrawler.exe`.
+
+Merge history is recorded in [REVIEW.md](REVIEW.md) under *Upstream merges*, including the
+conflict-resolution details for each release.
 
 `upstream` = https://github.com/AAndyProgram/SCrawler.

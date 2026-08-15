@@ -15,9 +15,47 @@ chunk-5 notes.
 - **Never speculatively edit** based on a suspicion — record it in *Open Suspicions* instead, and resolve it when the other half of the interaction is read.
 - `BugReporterFormDiscordWebHook.vb` is gitignored (contains a Discord webhook secret) — never commit it. It's why `BugReporterForm` is a `Partial Class`.
 - PersonalUtilities (`lib/*.dll`) is closed-source — cannot review; its known sharp edges are listed under *PersonalUtilities Hazards*.
+- **`lib/*.dll` must match the upstream release generation you have merged.** Upstream develops against
+  their own PersonalUtilities source and freely changes member accessibility between releases, so new
+  upstream code routinely fails to compile against older DLLs. When merging an upstream release, expect
+  to refresh `lib/` from that release's zip *as part of the merge* — see *Upstream merges*.
 - `SFile` is a **struct** — never use `Is`/`IsNot Nothing`; use `.IsEmptyString`.
 - Git: `origin` = TomTheHand fork (push here), `upstream` = AAndyProgram.
 - Use the PowerShell tool for git/msbuild, not Bash.
+
+## Upstream merges
+
+*(append per upstream release; the recipe below is the one that worked)*
+
+### 2026.8.7.0 — merged 2026-08-15 (commit `263a759`)
+
+Upstream ships each release as one squashed commit. This one: 36 files, +463/−118, against our 20
+commits / 39 files / +2246/−223. Overlap was 9 files; **only one conflicted**.
+
+- **The only conflict** was `Reddit/UserData.vb` `ReparseMissing` — because upstream *independently
+  fixed the same bug we had* (`_TempMediaList(i)` → `(li)`; their changelog's "Reddit missing posts").
+  Our version is a strict superset, so the resolution was "keep ours" for that hunk. Upstream's other
+  edit in the file (`RedditViewExchange.ApplyBase` → `.Apply`) auto-merged — resolve surgically
+  (delete the conflict region), do **not** `checkout --ours` the whole file or you lose it.
+- **Everything else auto-merged cleanly**, including all our deep work in Instagram, TikTok, Feed,
+  TDownloader, and UserDataBase. Upstream's changes there were mostly a mechanical
+  `ExchangeOptionsSet` → `.Apply(Me)` refactor across sites, which never overlapped our regions.
+- **The real blocker was the closed-source dependency**, not the merge: the merged tree failed to
+  compile with exactly one error — `ThisVid/Declarations.vb(45): BC30451: '_Cookies' is not declared`.
+  Upstream's new ThisVid cookie handling subclasses `Responser` and assigns `_Cookies`, which is
+  `Private` in our old DLL and `Protected` in the 2026.8.7.0 build (verified by reflection on both).
+  Fixed by refreshing `lib/` from the release zip. **Reflection is the fast way to diagnose this class
+  of failure** — load the DLL and compare the member's accessibility rather than guessing.
+- **Recipe:** `git fetch upstream` → trial-merge in a throwaway worktree (`git worktree add`, or
+  `git merge-tree --write-tree` for a no-touch preview) → resolve → copy the 3 `PersonalUtilities*.dll`
+  from the release zip's root into `lib/` → build. A fresh worktree also needs `nuget restore` and a
+  copy of the gitignored `BugReporterFormDiscordWebHook.vb` stub.
+- **Deploy note:** the refreshed DLLs must be deployed alongside `SCrawler.exe` — deploying only the
+  exe would run new code against the old library.
+
+Resolved one of our own chunk-5 notes: upstream fixed the `FeedFilter.Sites` quirk (Sites now actually
+filters feed data via `DataFilterPredicate`, not just the picker). Also gained Feed label-based filter
+search and Current/Favorite/Load toolbar buttons.
 
 ## Scope decisions (from user, 2026-07-07)
 
@@ -240,8 +278,9 @@ Notes (no action / report-only):
 - `FeedMedia` Dispose unsubscribes `Settings.Feeds` events only if `FeedShowSpecialFeedsMediaItem` is
   still true — toggling the setting off while tiles are alive leaks handlers (collection holds dead
   tiles until the swallow-all raisers eat their exceptions). Minor.
-- `FeedFilter.Sites` is saved in filter XML but only narrows the user-picker list in FeedFilterForm —
-  `DataFilterPredicate` checks Types/Users only, so a Sites-only filter filters nothing. Usability quirk.
+- ~~`FeedFilter.Sites` is saved in filter XML but only narrows the user-picker list in FeedFilterForm —
+  `DataFilterPredicate` checks Types/Users only, so a Sites-only filter filters nothing. Usability quirk.~~
+  **FIXED UPSTREAM in 2026.8.7.0** (arrived via the merge — `DataFilterPredicate` now checks `.Sites`).
 - `FeedSpecialCollection.UpdateUsers` reads `Downloader.Files.Count` without the lock — benign
   (approximate count check).
 - `FeedSpecial.RemoveNotExist` runs once per feed lifetime (`_NotExistRemoved` flag) — missing-file
