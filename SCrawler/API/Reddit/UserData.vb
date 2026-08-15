@@ -136,7 +136,7 @@ Namespace API.Reddit
                     DownloadTextSpecialFolder = .DownloadTextSpecialFolder
                     RedGifsAccount = .RedGifsAccount
                     RedditAccount = .RedditAccount
-                    If TypeOf Options Is RedditViewExchange Then DirectCast(Options, RedditViewExchange).ApplyBase(Me)
+                    If TypeOf Options Is RedditViewExchange Then DirectCast(Options, RedditViewExchange).Apply(Me)
                 End With
             End If
         End Sub

@@ -123,7 +123,7 @@ Namespace API.Twitter
         Friend Overrides Sub ExchangeOptionsSet(ByVal Obj As Object)
             If Not Obj Is Nothing AndAlso TypeOf Obj Is EditorExchangeOptions Then
                 With DirectCast(Obj, EditorExchangeOptions)
-                    .ApplyBase(Me)
+                    .Apply(Me)
                     GifsDownload = .GifsDownload
                     GifsSpecialFolder = .GifsSpecialFolder
                     GifsPrefix = .GifsPrefix
@@ -442,7 +442,7 @@ Namespace API.Twitter
                                         End If
                                     End If
                                 Else
-                                    ObtainMedia(nn, PostID, PostDate)
+                                    ObtainMedia(nn, PostID, PostDate,,,, ee)
                                 End If
                             End If
                         End If
@@ -717,7 +717,7 @@ nextpIndx:
                                             With jj(node)
                                                 If .ListExists Then
                                                     id = .Value("id_str")
-                                                    If _TempPostsList.Contains(id) Then j.Dispose() : Exit Sub Else ObtainMedia(.Self, id, .Value("created_at"))
+                                                    If _TempPostsList.Contains(id) Then j.Dispose() : Exit Sub Else ObtainMedia(.Self, id, .Value("created_at"),,,, jj)
                                                     Exit For
                                                 End If
                                             End With
@@ -738,11 +738,27 @@ nextpIndx:
 #End Region
 #Region "Obtain media"
         Private Sub ObtainMedia(ByVal e As EContainer, ByVal PostID As String, ByVal PostDate As String, Optional ByVal State As UStates = UStates.Unknown,
-                                Optional ByVal Attempts As Integer = 0, Optional ByVal SpecialFolder As String = Nothing)
+                                Optional ByVal Attempts As Integer = 0, Optional ByVal SpecialFolder As String = Nothing,
+                                Optional ByVal RootElem As EContainer = Nothing)
             Dim s As EContainer = e({"extended_entities", "media"})
             If If(s?.Count, 0) = 0 Then s = e({"retweeted_status", "extended_entities", "media"})
             If If(s?.Count, 0) = 0 Then s = e({"retweeted_status_result", "result", "legacy", "extended_entities", "media"})
-            Dim txt$ = If(DownloadText, e.Value("full_text"), String.Empty)
+            Dim txt$ = String.Empty
+
+            If DownloadText Then
+                txt = e.Value("full_text")
+                If RootElem.ListExists Then
+                    For Each n As String() In RichTextNode
+                        With RootElem(n)
+                            If Not .Self Is Nothing AndAlso Not .Value.IsEmptyString Then
+                                If Not txt.IsEmptyString AndAlso .Value.Contains(txt) Then txt = String.Empty
+                                If txt.IsEmptyString Then txt = .Value Else txt = $"{ .Value}{vbCr}{vbCr}----{vbCr}{vbCr}{txt}"
+                                Exit For
+                            End If
+                        End With
+                    Next
+                End If
+            End If
 
             Dim mUrl$
             Dim media As UserMedia
@@ -1266,7 +1282,7 @@ nextpIndx:
                                                                     If .ListExists Then
                                                                         PostDate = String.Empty
                                                                         If .Contains("created_at") Then PostDate = .Value("created_at") Else PostDate = String.Empty
-                                                                        ObtainMedia(.Self, m.Post.ID, PostDate, UStates.Missing, m.Attempts, specFolder)
+                                                                        ObtainMedia(.Self, m.Post.ID, PostDate, UStates.Missing, m.Attempts, specFolder, n)
                                                                         rList.ListAddValue(i, LNC)
                                                                     End If
                                                                 End With

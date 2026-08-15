@@ -6,10 +6,11 @@
 '
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY
+Imports SCrawler.API.Base
 Imports SCrawler.Plugin
 Imports SCrawler.Plugin.Attributes
 Namespace API.TikTok
-    Friend Class UserExchangeOptions : Inherits Base.EditorExchangeOptionsBase
+    Friend Class UserExchangeOptions : Inherits EditorExchangeOptionsBase
         <PSetting(NameOf(SiteSettings.GetTimeline), NameOf(MySettings))>
         Friend Property GetTimeline As Boolean
         <PSetting(NameOf(SiteSettings.GetStoriesUser), NameOf(MySettings))>
@@ -56,6 +57,20 @@ Namespace API.TikTok
             TitleAddVideoID = s.TitleAddVideoID.Value
             TitleUseRegexForTitle = s.TitleUseRegexForTitle.Value
             TitleUseRegexForTitle_Value = s.TitleUseRegexForTitle_Value.Value
+        End Sub
+        Friend Overrides Sub Apply(ByRef u As UserDataBase)
+            MyBase.Apply(u)
+            With DirectCast(u, UserData)
+                .GetTimeline = GetTimeline
+                .GetStoriesUser = GetStoriesUser
+                .GetReposts = GetReposts
+                .RemoveTagsFromTitle = RemoveTagsFromTitle
+                .TitleUseNative = TitleUseNative
+                .TitleAddVideoID = TitleAddVideoID
+                .TitleUseRegexForTitle = TitleUseRegexForTitle
+                .TitleUseRegexForTitle_Value = TitleUseRegexForTitle_Value
+                .TitleUseGlobalRegexOptions = TitleUseGlobalRegexOptions
+            End With
         End Sub
     End Class
 End Namespace

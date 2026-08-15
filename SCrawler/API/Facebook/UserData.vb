@@ -68,14 +68,7 @@ Namespace API.Facebook
             Return New UserExchangeOptions(Me)
         End Function
         Friend Overrides Sub ExchangeOptionsSet(ByVal Obj As Object)
-            If Not Obj Is Nothing AndAlso TypeOf Obj Is UserExchangeOptions Then
-                With DirectCast(Obj, UserExchangeOptions)
-                    ParsePhotoBlock = .ParsePhotoBlock
-                    ParseVideoBlock = .ParseVideoBlock
-                    ParseReelsBlock = .ParseReelsBlock
-                    ParseStoriesBlock = .ParseStoriesBlock
-                End With
-            End If
+            If Not Obj Is Nothing AndAlso TypeOf Obj Is UserExchangeOptions Then DirectCast(Obj, UserExchangeOptions).Apply(Me)
         End Sub
 #End Region
 #Region "Loader"

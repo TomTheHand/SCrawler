@@ -109,7 +109,7 @@ Namespace API.Xhamster
         End Function
         Friend Overrides Function GetUserUrl(ByVal User As IPluginContentProvider) As String
             With DirectCast(User, UserData)
-                If Not .SiteMode = SiteModes.User Then
+                If Not .SiteMode = SiteModes.User OrElse .IsCreator Then
                     Return .GetNonUserUrl(0)
                 Else
                     Return String.Format(UrlPatternUser, IIf(.IsChannel, ChannelOption, UserOption), .NameTrue)

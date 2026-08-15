@@ -53,7 +53,7 @@ Namespace API.Xhamster
         End Property
         Friend Property QueryString As String Implements IPSite.QueryString
             Get
-                If SiteMode = SiteModes.User Then
+                If SiteMode = SiteModes.User And Not IsCreator Then
                     Return String.Empty
                 Else
                     Return GetNonUserUrl(0)
@@ -73,7 +73,7 @@ Namespace API.Xhamster
         End Structure
         Private ReadOnly _TempPhotoData As List(Of UserMedia)
         Private Function UpdateUserOptions(Optional ByVal Force As Boolean = False, Optional ByVal NewUrl As String = Nothing) As Boolean
-            If Not Force OrElse (Not SiteMode = SiteModes.User AndAlso Not NewUrl.IsEmptyString AndAlso MyFileSettings.Exists) Then
+            If Not Force OrElse (Not NewUrl.IsEmptyString AndAlso MyFileSettings.Exists) Then
                 Dim eObj As Plugin.ExchangeOptions = Nothing
                 If Force Then eObj = MySettings.IsMyUser(NewUrl)
                 If (Force And Not eObj.UserName.IsEmptyString) Or (Not Force And NameTrue(True).IsEmptyString) Then
@@ -193,7 +193,7 @@ Namespace API.Xhamster
         End Sub
 #End Region
 #Region "Download functions"
-        Friend Function GetNonUserUrl(ByVal Page As Integer) As String
+        Friend Function GetNonUserUrl(ByVal Page As Integer, Optional ByVal GetShorts As Boolean = False) As String
             Const newest$ = "/newest"
             If SiteMode = SiteModes.User And Not IsCreator Then
                 Return String.Empty
@@ -210,8 +210,10 @@ Namespace API.Xhamster
                 End Select
                 url &= $"/{NameTrue}"
 
+                If GetShorts And (SiteMode = SiteModes.User Or IsCreator) Then url &= "/shorts"
+
                 Dim args$ = Arguments
-                If (args.IsEmptyString OrElse Not args.Contains(newest)) And Not SiteMode = SiteModes.Search Then url &= newest
+                If (args.IsEmptyString OrElse Not args.Contains(newest)) And Not SiteMode = SiteModes.Search And Not IsCreator Then url &= newest
                 If Page > 1 Then
                     If args.IsEmptyString Then
                         If SiteMode = SiteModes.Search Then
@@ -288,7 +290,10 @@ Namespace API.Xhamster
                     End If
                 ElseIf Not SiteMode = SiteModes.Search Then
                     If IsVideo Then
-                        If GetMoments Then containerNodes.Add({"momentListComponent", "videoThumbProps"})
+                        If GetMoments Then
+                            containerNodes.Add({"momentListComponent", "videoThumbProps"})
+                            containerNodes.Add({"momentsComponent", "videoListProps", "videoThumbProps"})
+                        End If
                         containerNodes.Add({"trendingVideoListComponent", "models"})
                         containerNodes.Add({"pagesCategoryComponent", "trendingVideoListProps", "models"})
                         containerNodes.Add({"trendingVideoSectionComponent", "videoModels"})
@@ -311,7 +316,7 @@ Namespace API.Xhamster
                     URL = GetNonUserUrl(Page)
                     containerNodes.Add({"searchResult", "models"})
                 ElseIf IsCreator Or SiteMode = SiteModes.Tags Or SiteMode = SiteModes.Categories Or SiteMode = SiteModes.Pornstars Then
-                    URL = GetNonUserUrl(Page)
+                    URL = GetNonUserUrl(Page, IsCreator And GetMoments)
                 Else
                     URL = $"https://xhamster.com/{SiteSettings.UserOption}/{NameTrue}/{If(GetMoments, "moments", IIf(IsVideo, "videos", "photos"))}{IIf(Page = 1, String.Empty, $"/{Page}")}"
                 End If

@@ -6,9 +6,10 @@
 '
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY
+Imports SCrawler.API.Base
 Imports SCrawler.Plugin.Attributes
 Namespace API.Facebook
-    Friend Class UserExchangeOptions
+    Friend Class UserExchangeOptions : Inherits EditorExchangeOptionsBase
         <PSetting(NameOf(SiteSettings.ParsePhotoBlock), NameOf(MySettings))>
         Friend Property ParsePhotoBlock As Boolean = True
         <PSetting(NameOf(SiteSettings.ParseVideoBlock), NameOf(MySettings))>
@@ -19,6 +20,7 @@ Namespace API.Facebook
         Friend Property ParseStoriesBlock As Boolean = True
         Private ReadOnly Property MySettings As SiteSettings
         Friend Sub New(ByVal u As UserData)
+            MyBase.New(u)
             MySettings = u.HostCollection.Default.Source
             ParsePhotoBlock = u.ParsePhotoBlock
             ParseVideoBlock = u.ParseVideoBlock
@@ -26,11 +28,21 @@ Namespace API.Facebook
             ParseStoriesBlock = u.ParseStoriesBlock
         End Sub
         Friend Sub New(ByVal s As SiteSettings)
+            MyBase.New(s)
             MySettings = s
             ParsePhotoBlock = s.ParsePhotoBlock.Value
             ParseVideoBlock = s.ParseVideoBlock.Value
             ParseReelsBlock = s.ParseReelsBlock.Value
             ParseStoriesBlock = s.ParseStoriesBlock.Value
+        End Sub
+        Friend Overrides Sub Apply(ByRef u As UserDataBase)
+            MyBase.Apply(u)
+            With DirectCast(u, UserData)
+                .ParsePhotoBlock = ParsePhotoBlock
+                .ParseVideoBlock = ParseVideoBlock
+                .ParseReelsBlock = ParseReelsBlock
+                .ParseStoriesBlock = ParseStoriesBlock
+            End With
         End Sub
     End Class
 End Namespace

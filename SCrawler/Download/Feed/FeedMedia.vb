@@ -155,10 +155,12 @@ Namespace DownloadObjects
         End Function
 #End Region
 #Region "Initializers"
-        Private Sub FileCheckSpecialFolders(ByRef f As SFile, ByVal ExtractText As Boolean)
+        Private Sub FileCheckSpecialFolders(ByRef f As SFile, ByVal ExtractText As Boolean, ByVal OrigFile As SFile)
             If Not File.Exists Then
                 If ExtractText Then
                     f.Path = $"{File.Path.CSFilePS}{UserDataBase.PostTextSpecialFolderDefault}"
+                    If Not f.Exists Then f.Path = OrigFile.Path
+                    If Not f.Exists Then f.Path = $"{OrigFile.Path.CSFilePS}{UserDataBase.PostTextSpecialFolderDefault}"
                 ElseIf Media.Data.Type = UserMedia.Types.Video Then
                     f.Path = $"{File.Path.CSFilePS}Video"
                 End If
@@ -224,14 +226,14 @@ Namespace DownloadObjects
                     LBL_TITLE.Dispose()
                     TP_MAIN.RowStyles(1).Height = 0
                     File = If(ExtractText, Media.Data.PostTextFile, Media.Data.File)
-                    FileCheckSpecialFolders(File, ExtractText)
+                    FileCheckSpecialFolders(File, ExtractText, Media.Data.File)
                 End If
 
                 If Not File.Exists And Not IsSubscription Then
                     If Not Media.Data.SpecialFolder.IsEmptyString Then
                         File = If(ExtractText, Media.Data.PostTextFile, Media.Data.File)
                         File.Path = $"{File.Path.CSFilePS}{Media.Data.SpecialFolder}".CSFileP
-                        FileCheckSpecialFolders(File, ExtractText)
+                        FileCheckSpecialFolders(File, ExtractText, Media.Data.File)
                     End If
                 End If
 

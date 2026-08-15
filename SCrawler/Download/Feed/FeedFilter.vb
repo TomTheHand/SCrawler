@@ -18,24 +18,28 @@ Namespace DownloadObjects
         Private Const Name_Types As String = "Types"
         Private Const Name_Users As String = "Users"
         Private Const Name_Sites As String = "Sites"
+        Private Const Name_Labels As String = "Labels"
 #End Region
 #Region "Properties"
         Friend Property Name As String
         Friend ReadOnly Property Types As List(Of UTypes)
         Friend ReadOnly Property Users As List(Of UserInfo)
         Friend ReadOnly Property Sites As List(Of String)
+        Friend ReadOnly Property Labels As List(Of String)
 #End Region
 #Region "Initializers"
         Friend Sub New()
             Types = New List(Of UTypes)
             Users = New List(Of UserInfo)
             Sites = New List(Of String)
+            Labels = New List(Of String)
         End Sub
         Friend Sub New(ByVal e As EContainer)
             Me.New
             Name = e.Value(Name_Name)
             Types.ListAddList(e.Value(Name_Types).StringToList(Of Integer)(","))
             Sites.ListAddList(e.Value(Name_Sites).StringToList(Of String)("|"))
+            Labels.ListAddList(e.Value(Name_Labels).StringToList(Of String)("|"))
             If If(e(Name_Users)?.Count, 0) > 0 Then
                 Users.ListAddList(e(Name_Users), LAP.IgnoreICopier)
                 Users.RemoveAll(Function(u) Not u.File.Exists)
@@ -75,8 +79,9 @@ Namespace DownloadObjects
             ee.Add(New EContainer(Name_Name, Name))
             ee.Add(New EContainer(Name_Types, Types.ListToString(",")))
             ee.Add(New EContainer(Name_Sites, Sites.ListToString("|")))
+            ee.Add(New EContainer(Name_Labels, Labels.ListToString("|")))
             If Users.Count > 0 Then
-                ee.Add(New EContainer(Name_Users, String.Empty))
+                ee.Add(New EContainer(Name_Users, String.Empty) With {.AllowSameNames = True})
                 ee(Name_Users).AddRange(Users)
             End If
             Return ee
@@ -95,6 +100,8 @@ Namespace DownloadObjects
                 Users.ListAddList(.Users, LAP.NotContainsOnly)
                 Sites.Clear()
                 Sites.ListAddList(.Sites, LAP.NotContainsOnly)
+                Labels.Clear()
+                Labels.ListAddList(.Labels, LAP.NotContainsOnly)
             End With
             Return Me
         End Function
@@ -126,8 +133,15 @@ Namespace DownloadObjects
             End Get
             Set(ByVal f As FeedFilter)
                 _TEMP = f
-                If _TEMP Is Nothing And _CurrentFilterName.IsEmptyString And Not _CurrentFilterNameLast.IsEmptyString Then _
-                   _CurrentFilterName = _CurrentFilterNameLast
+                If _TEMP Is Nothing Then
+                    If Not _CurrentFilterNameLast.IsEmptyString Then
+                        _CurrentFilterName = _CurrentFilterNameLast
+                    Else
+                        _CurrentFilterName = String.Empty
+                    End If
+                Else
+                    _CurrentFilterName = String.Empty
+                End If
             End Set
         End Property
         Friend ReadOnly Property Current(Optional ByVal Any As Boolean = True, Optional ByVal GetTemp As Boolean = True) As FeedFilter

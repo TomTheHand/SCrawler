@@ -177,7 +177,7 @@ Namespace API.Instagram
         Friend Overrides Sub ExchangeOptionsSet(ByVal Obj As Object)
             If Not Obj Is Nothing AndAlso TypeOf Obj Is EditorExchangeOptions Then
                 With DirectCast(Obj, EditorExchangeOptions)
-                    .ApplyBase(Me)
+                    .Apply(Me)
                     GetTimeline = .GetTimeline
                     GetReels = .GetReels
                     GetStories = .GetStories
@@ -333,6 +333,7 @@ Namespace API.Instagram
         Private _LastWwwClaim As String = String.Empty
         Private _ResponserGQLMode As Boolean = False
         Private _UseGQL As Boolean = False
+        Private Const ImgHeic$ = "heic"
         Private Sub ChangeResponserMode(ByVal GQL As Boolean, Optional ByVal Force As Boolean = False)
             If Not _ResponserGQLMode = GQL Or Force Then
                 _ResponserGQLMode = GQL
@@ -506,26 +507,26 @@ Namespace API.Instagram
                 If Not errorFound Then LoadSavePostsKV(False)
             End Try
         End Sub
+        'TODELETE: ValidateExtension
         Protected Sub ValidateExtension()
-            Dim tmpList As List(Of UserMedia) = Nothing
-            Try
-                Const heic$ = "heic"
-                If _TempMediaList.Count > 0 AndAlso _TempMediaList.Exists(Function(mm) mm.File.Extension = heic) Then
-                    Dim m As UserMedia
-                    tmpList = New List(Of UserMedia)
-                    tmpList.ListAddList(_TempMediaList)
-                    _TempMediaList.Clear()
-                    For i% = 0 To tmpList.Count - 1
-                        m = tmpList(i)
-                        _TempMediaList.Add(m)
-                        If m.Type = UTypes.Picture AndAlso Not m.File.Extension.IsEmptyString AndAlso m.File.Extension = heic Then _
-                           m.File.Extension = "jpg" : _TempMediaList.Add(m)
-                    Next
-                    tmpList.Clear()
-                End If
-            Catch ex As Exception
-                If tmpList.ListExists Then _TempMediaList.Clear() : _TempMediaList.ListAddList(tmpList) : tmpList.Clear()
-            End Try
+            'Dim tmpList As List(Of UserMedia) = Nothing
+            'Try
+            '    If _TempMediaList.Count > 0 AndAlso _TempMediaList.Exists(Function(mm) mm.File.Extension = ImgHeic) Then
+            '        Dim m As UserMedia
+            '        tmpList = New List(Of UserMedia)
+            '        tmpList.ListAddList(_TempMediaList)
+            '        _TempMediaList.Clear()
+            '        For i% = 0 To tmpList.Count - 1
+            '            m = tmpList(i)
+            '            _TempMediaList.Add(m)
+            '            If m.Type = UTypes.Picture AndAlso Not m.File.Extension.IsEmptyString AndAlso m.File.Extension = ImgHeic Then _
+            '               m.File.Extension = "jpg" : _TempMediaList.Add(m)
+            '        Next
+            '        tmpList.Clear()
+            '    End If
+            'Catch ex As Exception
+            '    If tmpList.ListExists Then _TempMediaList.Clear() : _TempMediaList.ListAddList(tmpList) : tmpList.Clear()
+            'End Try
         End Sub
         Protected Overridable Sub UpdateResponser()
             Try
@@ -727,7 +728,7 @@ Namespace API.Instagram
                             If _UseGQL And Cursor.IsEmptyString And Not Section = Sections.SavedPosts Then UpdateTokens(True)
                             If ID.IsEmptyString Or __idIsEmpty Or Not IsVerifiedProfile_Checked Then GetUserData(Token)
                             If ID.IsEmptyString Then UserExists = False : _ForceSaveUserInfo = True : Throw New Plugin.ExitException("can't get user ID")
-                            If ForceUpdateUserName Then GetUserNameById()
+                            If ForceUpdateUserName Then GetUserNameById(Token)
                             If ForceUpdateUserInfo Then GetUserData(Token)
                         End If
 
@@ -1306,6 +1307,7 @@ NextPageBlock:
                             With j({"data", "user"})
                                 If Not ____dataGql Or ID.IsEmptyString Then ID = .Value("id")
                                 __idFound = True
+                                If Not .Value("username").IsEmptyString Then NameTrue = .Value("username")
                                 UserSiteNameUpdate(.Value("full_name"))
                                 IsVerifiedProfile = .Value("is_verified").FromXML(Of Boolean)(False)
                                 IsVerifiedProfile_Checked = True
@@ -1343,9 +1345,17 @@ NextPageBlock:
                 ChangeResponserMode(_UseGQL)
             End Try
         End Sub
-        Private Function GetUserNameById() As Boolean
+        Private Function GetUserNameById(ByVal Token As CancellationToken) As Boolean
             UserNameRequested = True
             If ForceUpdateUserName Then ForceUpdateUserName = False : _ForceSaveUserInfo = True
+            If Not ID.IsEmptyString Then
+                Dim currentName$ = NameTrue
+                GetUserData(Token)
+                If Not currentName = NameTrue Then UserNameRequested = False : Return True
+            End If
+
+            Return False
+
             Try
                 If Not ID.IsEmptyString Then
                     UpdateRequestNumber()
@@ -1379,6 +1389,7 @@ NextPageBlock:
 #Region "Pinned stories"
         Private Sub GetStoriesData(ByRef StoriesList As List(Of String), ByVal GetUserStory As Boolean, ByVal Token As CancellationToken)
             Const ReqUrl$ = "https://i.instagram.com/api/v1/feed/reels_media/?{0}"
+            Const hPattern$ = "highlight:"
             Dim tmpList As IEnumerable(Of String) = Nothing
             Dim qStr$, r$
             Dim i% = -1
@@ -1391,7 +1402,7 @@ NextPageBlock:
                     If GetUserStory Then
                         qStr = $"https://www.instagram.com/api/v1/feed/reels_media/?reel_ids={ID}"
                     Else
-                        qStr = String.Format(ReqUrl, tmpList.Select(Function(q) $"reel_ids=highlight:{q}").ListToString("&"))
+                        qStr = String.Format(ReqUrl, tmpList.Select(Function(q) $"reel_ids={hPattern}{q.Replace(hPattern, String.Empty)}").ListToString("&"))
                     End If
                     UpdateRequestNumber()
                     r = Responser.GetResponse(qStr,, EDP.ThrowException)
@@ -1440,21 +1451,34 @@ NextPageBlock:
             End If
         End Sub
         Private Function GetStoriesList() As List(Of String)
-            UpdateRequestNumber()
-            Dim r$ = Responser.GetResponse($"https://i.instagram.com/api/v1/highlights/{ID}/highlights_tray/",, EDP.ThrowException)
-            If Not r.IsEmptyString Then
-                Dim ee As New ErrorsDescriber(EDP.ReturnValue) With {.DeclaredMessage = New MMessage($"{ToStringForLog()}:")}
-                Using j As EContainer = JsonDocument.Parse(r, ee).XmlIfNothing()("tray").XmlIfNothing
-                    If j.Count > 0 Then Return j.Select(Function(jj) jj.Value("id").Replace("highlight:", String.Empty)).ListIfNothing
-                End Using
+            If CBool(MySiteSettings.USE_GQL_Highlights.Value) Then
+                Dim hList As List(Of String) = GetHighlightsGQL_List()
+                If Not _UseGQL Then ChangeResponserMode(_UseGQL)
+                Return hList
+            Else
+                UpdateRequestNumber()
+                Dim r$ = Responser.GetResponse($"https://i.instagram.com/api/v1/highlights/{ID}/highlights_tray/",, EDP.ThrowException)
+                If Not r.IsEmptyString Then
+                    Dim ee As New ErrorsDescriber(EDP.ReturnValue) With {.DeclaredMessage = New MMessage($"{ToStringForLog()}:")}
+                    Using j As EContainer = JsonDocument.Parse(r, ee).XmlIfNothing()("tray").XmlIfNothing
+                        If j.Count > 0 Then Return j.Select(Function(jj) jj.Value("id").Replace("highlight:", String.Empty)).ListIfNothing
+                    End Using
+                End If
+                Return Nothing
             End If
-            Return Nothing
         End Function
 #End Region
 #Region "Download content"
         Protected Overrides Sub DownloadContent(ByVal Token As CancellationToken)
             DownloadContentDefault(Token)
         End Sub
+        Protected Overrides Function DownloadContentDefault_ConvertWebp(ByVal m As UserMedia, ByVal Process As Boolean) As SFile
+            If m.Type = UTypes.Picture AndAlso Not m.File.Extension.IsEmptyString AndAlso m.File.Extension = ImgHeic Then
+                Return DownloadContentDefault_ConvertWebp_Impl(m, True, True)
+            Else
+                Return MyBase.DownloadContentDefault_ConvertWebp(m, Process)
+            End If
+        End Function
 #End Region
 #Region "Erase"
         Protected Overrides Sub EraseData_AdditionalDataFiles()
@@ -1477,7 +1501,7 @@ NextPageBlock:
         Protected Overrides Function DownloadingException(ByVal ex As Exception, ByVal Message As String, Optional ByVal FromPE As Boolean = False,
                                                           Optional ByVal s As Object = Nothing) As Integer
             If Responser.StatusCode = HttpStatusCode.NotFound Then '404
-                If Not UserNameRequested AndAlso GetUserNameById() Then Return 1 Else UserExists = False
+                If Not UserNameRequested AndAlso GetUserNameById(New CancellationToken) Then Return 1 Else UserExists = False
             ElseIf Responser.StatusCode = HttpStatusCode.BadRequest Or Responser.StatusCode = HttpStatusCode.Unauthorized Then '400, 401
                 HasError = True
                 MyMainLOG = $"Instagram credentials have expired [{CInt(Responser.StatusCode)}]: {ToStringForLog()} [{s}]"

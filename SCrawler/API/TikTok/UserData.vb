@@ -80,20 +80,7 @@ Namespace API.TikTok
             Return New UserExchangeOptions(Me)
         End Function
         Friend Overrides Sub ExchangeOptionsSet(ByVal Obj As Object)
-            If Not Obj Is Nothing AndAlso TypeOf Obj Is UserExchangeOptions Then
-                With DirectCast(Obj, UserExchangeOptions)
-                    .ApplyBase(Me)
-                    GetTimeline = .GetTimeline
-                    GetStoriesUser = .GetStoriesUser
-                    GetReposts = .GetReposts
-                    RemoveTagsFromTitle = .RemoveTagsFromTitle
-                    TitleUseNative = .TitleUseNative
-                    TitleAddVideoID = .TitleAddVideoID
-                    TitleUseRegexForTitle = .TitleUseRegexForTitle
-                    TitleUseRegexForTitle_Value = .TitleUseRegexForTitle_Value
-                    TitleUseGlobalRegexOptions = .TitleUseGlobalRegexOptions
-                End With
-            End If
+            If Not Obj Is Nothing AndAlso TypeOf Obj Is UserExchangeOptions Then DirectCast(Obj, UserExchangeOptions).Apply(Me)
         End Sub
 #End Region
 #Region "Loader"

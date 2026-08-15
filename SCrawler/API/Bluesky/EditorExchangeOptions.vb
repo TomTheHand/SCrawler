@@ -17,11 +17,13 @@ Namespace API.Bluesky
         Friend Overridable Property DownloadModelProfile As Boolean = False
         Private ReadOnly Property MySettings As Object
         Friend Sub New(ByVal s As SiteSettings)
+            MyBase.New(s)
             DownloadModelMedia = s.DownloadModelMedia.Value
             DownloadModelProfile = s.DownloadModelProfile.Value
             MySettings = s
         End Sub
         Friend Sub New(ByVal u As UserData)
+            MyBase.New(u)
             DownloadModelMedia = u.DownloadModelMedia
             DownloadModelProfile = u.DownloadModelProfile
             MySettings = u.HOST.Source

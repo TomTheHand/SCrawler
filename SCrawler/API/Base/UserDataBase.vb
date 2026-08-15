@@ -2063,7 +2063,7 @@ stxt:
         Protected Overridable Function DownloadContentDefault_ConvertWebp(ByVal m As UserMedia, ByVal Process As Boolean) As SFile
             Return DownloadContentDefault_ConvertWebp_Impl(m, Process)
         End Function
-        Protected Overridable Function DownloadContentDefault_ConvertWebp_Impl(ByVal m As UserMedia, ByVal Process As Boolean) As SFile
+        Protected Overridable Function DownloadContentDefault_ConvertWebp_Impl(ByVal m As UserMedia, ByVal Process As Boolean, Optional ByVal ConvertWebpForce As Boolean = False) As SFile
             Dim WebpFile As SFile = m.File
             Dim f As SFile = WebpFile
             If Process AndAlso f.Exists Then
@@ -2072,7 +2072,7 @@ stxt:
                 If WebpFile.Copy(f) Then
                     Dim newFile As SFile = WebpFile
                     newFile.Extension = UserImage.ExtJpg
-                    f = UserImage.ConvertWebp(f, newFile)
+                    f = UserImage.ConvertWebp(f, newFile, ConvertWebpForce)
                     If f.Exists Then WebpFile.Delete(SFO.File, SFODelete.DeletePermanently, EDP.ReturnValue)
                 Else
                     f = WebpFile

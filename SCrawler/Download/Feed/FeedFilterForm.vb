@@ -6,6 +6,7 @@
 '
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY
+Imports SCrawler.API.Base
 Imports PersonalUtilities.Forms
 Imports PersonalUtilities.Forms.Controls.Base
 Imports UTypes = SCrawler.API.Base.UserMedia.Types
@@ -105,6 +106,7 @@ Namespace DownloadObjects
                     End If
 
                     UpdateSitesText()
+                    UpdateLabelsText()
 
                     .EndLoaderOperations()
                     RefillList(True)
@@ -143,21 +145,29 @@ Namespace DownloadObjects
                 Return DirectCast(Obj, DataUserTmp).UserInfo
             End Function
         End Structure
+        Private SitePredicate As Predicate(Of IUserData) = Function(d) MyFilter.Sites.Count = 0 OrElse MyFilter.Sites.Contains(d.Site)
+        Private LabelPredicate As Predicate(Of IUserData) = Function(d) MyFilter.Labels.Count = 0 OrElse MyFilter.Labels.ListContains(d.Labels)
         Private Sub RefillList(Optional ByVal Init As Boolean = False)
             If Not MyDefs.Initializing Then
                 If Not Init Then ApplyFilter()
                 LIST_USERS.Items.Clear()
                 Dim dataUsers As New List(Of DataUserTmp)
                 If CH_U_SHOW_ALL.Checked Or MyData.Count = 0 Then
-                    dataUsers.ListAddList(Settings.UsersList)
-                Else
-                    dataUsers.ListAddList(MyData.Select(Function(d) d.UserInfo), LAP.NotContainsOnly)
+                    'dataUsers.ListAddList(Settings.UsersList)
+                    If Settings.Users.Count > 0 Then dataUsers.ListAddList(From __d As IUserData In Settings.GetUsers(Function(____d) True)
+                                                                           Where SitePredicate(__d) And LabelPredicate(__d)
+                                                                           Select DirectCast(__d, UserDataBase).User)
+                ElseIf MyData.Count > 0 Then
+                    'dataUsers.ListAddList(MyData.Select(Function(d) d.UserInfo), LAP.NotContainsOnly)
+                    dataUsers.ListAddList((From __d As IUserData In MyData.Select(Function(____d) ____d.User)
+                                           Where SitePredicate(__d) And LabelPredicate(__d)
+                                           Select DirectCast(__d, UserDataBase).User), LAP.NotContainsOnly)
                 End If
                 Dim i%
                 If dataUsers.Count > 0 Then
                     dataUsers.Sort()
                     With MyFilter
-                        If .Sites.Count > 0 Then dataUsers.RemoveAll(Function(d) Not .Sites.Contains(d.UserInfo.Site))
+                        'If .Sites.Count > 0 Then dataUsers.RemoveAll(Function(d) Not .Sites.Contains(d.UserInfo.Site))
                         If dataUsers.Count > 0 Then
                             dataUsers.ForEach(Sub(d) LIST_USERS.Items.Add(d, True))
                             If .Users.Count > 0 Then
@@ -243,9 +253,29 @@ Namespace DownloadObjects
             End Select
             If refill Then RefillList()
         End Sub
+        Private Sub TXT_LABELS_ActionOnButtonClick(ByVal Sender As Object, ByVal e As ActionButtonEventArgs) Handles TXT_LABELS.ActionOnButtonClick
+            Dim refill As Boolean = False
+            Select Case e.DefaultButton
+                Case ActionButton.DefaultButtons.Edit
+                    Using f As New LabelsForm(MyFilter.Labels, False)
+                        f.ShowDialog()
+                        If f.DialogResult = DialogResult.OK Then
+                            refill = Not MyFilter.Labels.ListEquals(f.LabelsList)
+                            MyFilter.Labels.ListAddList(f.LabelsList, LAP.NotContainsOnly, LAP.ClearBeforeAdd)
+                            UpdateLabelsText()
+                        End If
+                    End Using
+                Case ActionButton.DefaultButtons.Clear : refill = MyFilter.Labels.Count > 0 : MyFilter.Labels.Clear() : UpdateLabelsText()
+            End Select
+            If refill Then RefillList()
+        End Sub
         Private Sub UpdateSitesText()
             TXT_SITE.Clear()
             TXT_SITE.Text = MyFilter.Sites.ListToString
+        End Sub
+        Private Sub UpdateLabelsText()
+            TXT_LABELS.Clear()
+            TXT_LABELS.Text = MyFilter.Labels.ListToString
         End Sub
 #End Region
     End Class

@@ -11,6 +11,10 @@ Imports DN = SCrawler.API.Base.DeclaredNames
 Namespace API.Base
     Friend Class EditorExchangeOptionsBase
         Friend Overridable Property SiteKey As String
+        <PSetting(Address:=SettingAddress.User, Caption:="Profile exists")>
+        Friend Overridable Property UserExists As Boolean = True
+        <PSetting(Address:=SettingAddress.User, Caption:="Profile suspended")>
+        Friend Overridable Property UserSuspended As Boolean = False
         <PSetting(Address:=SettingAddress.User, Caption:=DN.UserNameChangeCaption, ToolTip:=DN.UserNameChangeToolTip)>
         Friend Overridable Property UserName As String = String.Empty
         <PSetting(Address:=SettingAddress.User, Caption:=DN.DownloadTextCaption, ToolTip:=DN.DownloadTextTip)>
@@ -20,6 +24,8 @@ Namespace API.Base
         <PSetting(Address:=SettingAddress.User, Caption:=DN.DownloadTextSpecialFolderCaption, ToolTip:=DN.DownloadTextSpecialFolderTip)>
         Friend Overridable Property DownloadTextSpecialFolder As Boolean = False
         Friend Sub New(ByVal u As UserDataBase)
+            UserExists = u.UserExists
+            UserSuspended = u.UserSuspended
             UserName = u.NameTrue(True)
             DownloadText = u.DownloadText
             DownloadTextPosts = u.DownloadTextPosts
@@ -35,6 +41,8 @@ Namespace API.Base
         Protected _ApplyBase_Name As Boolean = True
         Protected _ApplyBase_Text As Boolean = True
         Friend Sub ApplyBase(ByRef u As UserDataBase)
+            u.UserExists = UserExists
+            u.UserSuspended = UserSuspended
             If _ApplyBase_Name Then u.NameTrue = UserName
             If _ApplyBase_Text Then
                 u.DownloadText = DownloadText
