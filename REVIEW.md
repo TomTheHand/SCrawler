@@ -57,6 +57,44 @@ Resolved one of our own chunk-5 notes: upstream fixed the `FeedFilter.Sites` qui
 filters feed data via `DataFilterPredicate`, not just the picker). Also gained Feed label-based filter
 search and Current/Favorite/Load toolbar buttons.
 
+## Reddit ↔ RedGifs cross-account work (user feature, 2026-08-15)
+
+Motivation: Reddit posters frequently link videos from their own RedGifs account. The user adds both
+accounts and puts them in one collection, then downloads the same video twice and cleans up with
+external dedup software.
+
+**Step 1 — creator discovery: DONE** (commit `680331c`). Reddit's `ReparseVideo` resolves RedGifs links
+through `RedGifs.UserData.GetDataFromUrlId`, whose API URL (`PostDataUrl`) already requests
+`users=yes` — the creator account was in the response and being discarded. Now surfaced via a new
+`Optional ByRef CreatorUserName`, counted per account in `_RedGifsCreators`, and reported to the
+activity log by `ReportRedGifsCreators` (skips accounts already in `Settings.UsersList`; appends the
+Reddit user's collection name when it has one). **Zero extra requests.** Deliberately reporting-only:
+a RedGifs link does NOT prove the Reddit poster owns the account (crossposts/reposts name other
+creators), so counts are shown and the user decides. Only covers posts processed this run (i.e. new
+posts), so the picture builds up over time rather than cataloguing the backlog at once.
+
+Next steps if the discovery data proves accurate: an end-of-run review dialog with one-click
+"add RedGifs account + put both in a collection", plus a persistent dismissed-list so rejected
+suggestions (foreign creators from crossposts) stop reappearing every run.
+
+**Step 2 — download once (NOT built; user has chosen the approach):**
+- User's decisions: bandwidth is *not* the concern, the manual dedup is → **option (b),
+  collection-wide MD5 dedup** (let both download, delete the duplicate) is what they want. A RedGifs
+  video that is on Reddit but *not* on the creator's RedGifs timeline must still be kept under the
+  Reddit user. Post title/text is irrelevant to them. RedGifs post date wins.
+- **Critical constraint:** the surviving copy must be the **RedGifs** one, with the RedGifs post date —
+  *not* whichever downloaded first. Today `_MD5List` is per-user and `DownloadContentDefault` deletes
+  the file it just downloaded when the hash already exists, i.e. it keeps whichever arrived FIRST.
+  Widening the MD5 list across a collection is therefore not enough on its own; it needs an explicit
+  source-preference rule so a Reddit-first ordering still ends with the RedGifs copy surviving.
+- Verify before building: both paths must select the same quality variant, or the files won't be
+  byte-identical and MD5 matching silently won't fire.
+- Considered and rejected for now: skipping on the Reddit side at parse time (best bandwidth saving,
+  but can silently lose content when a gif isn't on the creator's timeline, and risks recording the
+  Reddit post ID as handled so it is never reconsidered — the TikTok chunk-4 bug class).
+- Naming caution: Reddit's existing `RedGifsAccount` property is which RedGifs *credentials* to
+  authenticate with, NOT creator identity. Keep the new concept's naming distinct.
+
 ## Scope decisions (from user, 2026-07-07)
 
 - Sites used: **Reddit + RedGIFs (top priority)**, Instagram, TikTok. All other site modules: **skip**.
