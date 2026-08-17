@@ -328,6 +328,13 @@ Namespace API.Reddit
         Private ReadOnly _CrossPosts As List(Of String)
         Private Const SiteGfycatKey As String = "gfycat"
         Private Const SiteRedGifsKey As String = "redgifs"
+        ''' <summary>
+        ''' RedGifs creator accounts seen on this user's RedGifs links during the current run
+        ''' (username → number of posts). Filled in <see cref="ReparseVideo"/> from metadata that is
+        ''' fetched anyway, and reported by <see cref="ReportRedGifsCreators"/>. Discovery only —
+        ''' nothing is added to SCrawler automatically.
+        ''' </summary>
+        Private ReadOnly _RedGifsCreators As New Dictionary(Of String, Integer)
         Private Const Node_CrosspostRootId As String = "crosspostRootId"
         Private Const Node_CrosspostParentId As String = "crosspostParentId"
         Private Const Node_CrosspostParent As String = "crosspost_parent"
@@ -1036,10 +1043,12 @@ Namespace API.Reddit
         Protected Overrides Sub ReparseVideo(ByVal Token As CancellationToken)
             Dim RedGifsResponser As Responser = Nothing
             Try
+                _RedGifsCreators.Clear()
                 ThrowAny(Token)
                 Const v2 As UTypes = UTypes.VideoPre + UTypes.m3u8
                 If _TempMediaList.Count > 0 AndAlso _TempMediaList.Exists(Function(p) p.Type = UTypes.VideoPre Or p.Type = v2) Then
                     Dim r$, v$
+                    Dim rgCreator$
                     Dim e As New ErrorsDescriber(EDP.ReturnValue)
                     Dim m As UserMedia, m2 As UserMedia
                     Dim RedGifsHost As SettingsHost = Settings(RedGifs.RedGifsSiteKey, RedGifsAccount)
@@ -1059,7 +1068,18 @@ Namespace API.Reddit
                                         r = Gfycat.Envir.GetVideo(m.URL)
                                         If Not r.IsEmptyString AndAlso r.Contains("redgifs.com") Then m.URL = r : _repeatForRedgifs = True
                                     ElseIf m.URL.Contains(SiteRedGifsKey) Then
-                                        m2 = RedGifs.UserData.GetDataFromUrlId(m.URL, False, RedGifsResponser, RedGifsHost, RedGifsAccount)
+                                        rgCreator = String.Empty
+                                        m2 = RedGifs.UserData.GetDataFromUrlId(m.URL, False, RedGifsResponser, RedGifsHost, RedGifsAccount, rgCreator)
+                                        ' Note which RedGifs account this gif belongs to. A link does NOT prove the
+                                        ' Reddit poster owns it (crossposts/reposts name someone else), so this is
+                                        ' counted per account and only reported — never acted on automatically.
+                                        If Not rgCreator.IsEmptyString Then
+                                            If _RedGifsCreators.ContainsKey(rgCreator) Then
+                                                _RedGifsCreators(rgCreator) += 1
+                                            Else
+                                                _RedGifsCreators.Add(rgCreator, 1)
+                                            End If
+                                        End If
                                         If m2.State = UStates.Missing Then
                                             m.State = UStates.Missing
                                             _ContentList.Add(m)
@@ -1093,6 +1113,7 @@ Namespace API.Reddit
                             End If
                         End If
                     Next
+                    ReportRedGifsCreators()
                 End If
             Catch ex As Exception
                 ProcessException(ex, Token, "video reparsing error", False)
@@ -1101,6 +1122,36 @@ Namespace API.Reddit
                 ProgressPre.Done()
             End Try
         End Sub
+        ''' <summary>
+        ''' Reports the RedGifs creator accounts found in <see cref="_RedGifsCreators"/> to the activity
+        ''' log, skipping any already present in SCrawler (so the list stays actionable). Reporting only:
+        ''' a RedGifs link is not proof the Reddit poster owns that account — crossposts and reposts name
+        ''' other creators — so the post count is included and the judgement is left to the user.
+        ''' </summary>
+        Private Sub ReportRedGifsCreators()
+            Try
+                If _RedGifsCreators.Count = 0 Then Exit Sub
+                Dim total% = _RedGifsCreators.Values.Sum
+                Dim colStr$ = String.Empty
+                Try
+                    If User.IncludedInCollection AndAlso Not User.CollectionName.IsEmptyString Then _
+                       colStr = $"; this user is in collection [{User.CollectionName}]"
+                Catch
+                End Try
+                For Each creator As KeyValuePair(Of String, Integer) In _RedGifsCreators.OrderByDescending(Function(c) c.Value)
+                    If Not RedGifsUserExists(creator.Key) Then _
+                       DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: RedGifs creator [{creator.Key}] — " &
+                                                       $"{creator.Value} of {total} RedGifs post(s) this run; not in SCrawler{colStr}")
+                Next
+            Catch
+                'discovery is a nicety — never let it disturb a download
+            End Try
+        End Sub
+        ''' <summary>Is a RedGifs user with this name already added to SCrawler?</summary>
+        Private Shared Function RedGifsUserExists(ByVal UserName As String) As Boolean
+            Return Settings.UsersList.Exists(Function(u) u.Plugin = RedGifs.RedGifsSiteKey AndAlso
+                                                         String.Equals(u.Name, UserName, StringComparison.OrdinalIgnoreCase))
+        End Function
 #End Region
 #Region "ReparseMissing"
         ' After this many combined failures (re-fetch + download attempts) we stop retrying a missing

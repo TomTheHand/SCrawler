@@ -288,14 +288,20 @@ Namespace API.RedGifs
                 Return String.Empty
             End If
         End Function
+        ''' <param name="CreatorUserName">
+        ''' Out: the RedGifs account that posted this gif, taken from the metadata this call already
+        ''' fetches (<see cref="PostDataUrl"/> requests <c>users=yes</c>). Used by the Reddit side to
+        ''' notice that a Reddit poster also has a RedGifs account. Callers that omit it are unaffected.
+        ''' </param>
         Friend Shared Function GetDataFromUrlId(ByVal Obj As String, ByVal ObjIsID As Boolean, ByVal Responser As Responser,
-                                                ByVal Host As Plugin.Hosts.SettingsHost, ByVal AccountName As String) As UserMedia
+                                                ByVal Host As Plugin.Hosts.SettingsHost, ByVal AccountName As String,
+                                                Optional ByRef CreatorUserName As String = Nothing) As UserMedia
             Dim URL$ = String.Empty
             Try
                 If Obj.IsEmptyString Then Return Nothing
                 If Not ObjIsID Then
                     Obj = GetVideoIdFromUrl(Obj)
-                    If Not Obj.IsEmptyString Then Return GetDataFromUrlId(Obj, True, Responser, Host, AccountName)
+                    If Not Obj.IsEmptyString Then Return GetDataFromUrlId(Obj, True, Responser, Host, AccountName, CreatorUserName)
                 Else
                     If Host Is Nothing Then
                         Host = Settings(RedGifsSiteKey, AccountName)
@@ -314,6 +320,10 @@ Namespace API.RedGifs
                             Using j As EContainer = JsonDocument.Parse(r)
                                 If Not j Is Nothing Then
                                     Dim tm As UserMedia = ExtractMedia(j("gif"))
+                                    ' Creator account, for the Reddit-side discovery report (see the parameter docs).
+                                    ' Free: this response was fetched anyway, and carries the user block (users=yes).
+                                    CreatorUserName = If(j("gif")?.Value("userName"), String.Empty)
+                                    If CreatorUserName.IsEmptyString Then CreatorUserName = If(j("user")?.Value("username"), String.Empty)
                                     tm.Post.ID = Obj
                                     tm.File = CStr(RegexReplace(tm.URL, FilesPattern))
                                     If tm.File.IsEmptyString Then
