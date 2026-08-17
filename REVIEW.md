@@ -77,7 +77,32 @@ Next steps if the discovery data proves accurate: an end-of-run review dialog wi
 "add RedGifs account + put both in a collection", plus a persistent dismissed-list so rejected
 suggestions (foreign creators from crossposts) stop reappearing every run.
 
-**Step 2 — download once (NOT built; user has chosen the approach):**
+**Step 2 — download once: DONE** (commit `17777b3`), as `Download\CrossAccountDedup.vb`.
+
+*Mechanism changed from the user's stated option (b) for a hard reason:* `DownloadContentDefault`'s MD5
+comparison is gated on `v.Type = UTypes.GIF Or v.Type = UTypes.Picture` — **videos are never hashed**.
+RedGifs media is Video, so widening `_MD5List` across a collection would never have fired on exactly
+these duplicates. Matching is therefore on the **RedGifs gif ID**, which is exact, free, and needs no
+hashing of large files: RedGifs stores it as `Post.ID` (both the timeline path via `g.Value("id")` and
+`GetDataFromUrlId` via `tm.Post.ID`), and Reddit keeps the original watch URL in `URL_BASE`, from which
+`RedGifs.UserData.GetVideoIdFromUrl` recovers it. ID comparison is `OrdinalIgnoreCase` because the two
+paths differ in casing.
+
+Design points: runs from `TDownloader.StartDownloading` **after the job's `Do While` completes**, because
+`UserDataBind.DownloadData` does not run its members — it expands them into the downloader queue
+(`Downloader.AddRange(Collections, True)`), so there is no in-collection completion hook and member
+order is not guaranteed. Only `UStates.Downloaded` items are eligible (a Missing record has no file and
+must keep its retry budget). Files go to the **recycle bin**, never permanent delete. Every removal is
+reported to the activity log. Skipped on cancel/error — it just runs after the next completed job.
+New generic helpers on `UserDataBase`: `ContentSnapshot()` and `RemoveContentAndRecycleFiles(Match)`
+(the latter persists via `UpdateContentInformation` + `UpdateUserInformation`; the post ID stays in the
+posts file so removals are not re-discovered as new).
+
+Quality: `RedGifs.UserData.ExtractMedia` takes `urls.hd` and only falls back to `sd`, and is the **same
+shared function** both the Reddit and RedGifs paths use — so both already resolve to the identical HD
+URL. Highest-quality is satisfied and the two copies are byte-identical.
+
+**Original step-2 analysis (kept for context):**
 - User's decisions: bandwidth is *not* the concern, the manual dedup is → **option (b),
   collection-wide MD5 dedup** (let both download, delete the duplicate) is what they want. A RedGifs
   video that is on Reddit but *not* on the creator's RedGifs timeline must still be kept under the
