@@ -734,6 +734,37 @@ BlockNullPicture:
                 Return _ContentList.Exists(MissingFinder)
             End Get
         End Property
+        ''' <summary>Copy of the recorded content list (downloaded + missing); safe to enumerate.</summary>
+        Friend Overridable Function ContentSnapshot() As List(Of UserMedia)
+            Return New List(Of UserMedia)(_ContentList)
+        End Function
+        ''' <summary>
+        ''' Removes recorded content matching <paramref name="Match"/>, sending the corresponding files
+        ''' (and any text sidecar) to the recycle bin, then persists the change. Returns the number of
+        ''' records removed. Used by <see cref="DownloadObjects.CrossAccountDedup"/>; the post ID stays
+        ''' in the posts file, so the removed item is not re-discovered as new on the next run.
+        ''' </summary>
+        Friend Overridable Function RemoveContentAndRecycleFiles(ByVal Match As Predicate(Of UserMedia)) As Integer
+            Dim removed% = 0
+            Try
+                Dim m As UserMedia
+                For i% = _ContentList.Count - 1 To 0 Step -1
+                    m = _ContentList(i)
+                    If Match(m) Then
+                        If Not m.File.IsEmptyString AndAlso m.File.Exists Then _
+                           m.File.Delete(SFO.File, SFODelete.DeleteToRecycleBin, EDP.ReturnValue)
+                        If Not m.PostTextFile.IsEmptyString AndAlso m.PostTextFile.Exists Then _
+                           m.PostTextFile.Delete(SFO.File, SFODelete.DeleteToRecycleBin, EDP.ReturnValue)
+                        _ContentList.RemoveAt(i)
+                        removed += 1
+                    End If
+                Next
+                If removed > 0 Then UpdateContentInformation() : UpdateUserInformation()
+            Catch ex As Exception
+                LogError(ex, "duplicate removal error")
+            End Try
+            Return removed
+        End Function
         Friend Sub RemoveMedia(ByVal m As UserMedia, ByVal State As UStates?)
             Dim i% = If(State.HasValue, _ContentList.FindIndex(Function(mm) mm.State = State.Value And mm.Equals(m)), _ContentList.IndexOf(m))
             If i >= 0 Then _ContentList.RemoveAt(i)

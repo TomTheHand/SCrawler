@@ -688,6 +688,11 @@ Namespace DownloadObjects
                     End If
                     Thread.Sleep(500)
                 Loop
+                ' Everything in this job has finished, so collection members are all done regardless of
+                ' the order they were batched in — the point at which cross-account duplicates can be
+                ' reconciled safely. Skipped on cancel/error (the Catch blocks below); it simply runs
+                ' after the next completed job instead.
+                CrossAccountDedup.RemoveRedGifsDuplicates()
                 _Job.Progress.InformationTemporary = pt("All data downloaded")
             Catch oex As OperationCanceledException When _Job.IsCancellationRequested
                 _Job.Progress.InformationTemporary = pt("Downloading canceled")

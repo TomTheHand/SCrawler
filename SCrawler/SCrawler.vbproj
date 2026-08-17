@@ -532,6 +532,7 @@
     <Compile Include="PluginsEnvironment\Hosts\SettingsHost.vb" />
     <Compile Include="SettingsCLS.vb" />
     <Compile Include="Download\ActivityLog.vb" />
+    <Compile Include="Download\CrossAccountDedup.vb" />
     <Compile Include="Download\ActivityLogForm.vb">
       <SubType>Form</SubType>
     </Compile>
