@@ -1139,19 +1139,18 @@ Namespace API.Reddit
                 Catch
                 End Try
                 For Each creator As KeyValuePair(Of String, Integer) In _RedGifsCreators.OrderByDescending(Function(c) c.Value)
-                    If Not RedGifsUserExists(creator.Key) Then _
-                       DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: RedGifs creator [{creator.Key}] — " &
-                                                       $"{creator.Value} of {total} RedGifs post(s) this run; not in SCrawler{colStr}")
+                    If Not DownloadObjects.RedGifsDiscovery.RedGifsUserExists(creator.Key) Then
+                        ' Persist so it survives the run and can be reviewed (and accepted or rejected)
+                        ' whenever the user chooses — see DownloadObjects.RedGifsDiscovery.
+                        DownloadObjects.RedGifsDiscovery.Record(creator.Key, Name, LVIKey, creator.Value)
+                        DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: RedGifs creator [{creator.Key}] — " &
+                                                        $"{creator.Value} of {total} RedGifs post(s) this run; not in SCrawler{colStr}")
+                    End If
                 Next
             Catch
                 'discovery is a nicety — never let it disturb a download
             End Try
         End Sub
-        ''' <summary>Is a RedGifs user with this name already added to SCrawler?</summary>
-        Private Shared Function RedGifsUserExists(ByVal UserName As String) As Boolean
-            Return Settings.UsersList.Exists(Function(u) u.Plugin = RedGifs.RedGifsSiteKey AndAlso
-                                                         String.Equals(u.Name, UserName, StringComparison.OrdinalIgnoreCase))
-        End Function
 #End Region
 #Region "ReparseMissing"
         ' After this many combined failures (re-fetch + download attempts) we stop retrying a missing

@@ -657,6 +657,13 @@ Namespace DownloadObjects
                 FilesUpdatePendingUsers()
                 If FilesChanged Then FilesSave() : RaiseEvent FeedFilesChanged(True)
                 If _SessionSavedPosts <> -1 Then Session = _SessionSavedPosts : _SessionSavedPosts = -1
+                ' Surface newly discovered RedGifs accounts once the run is over — never during it, and
+                ' never for an automated run (nobody is there to answer). Marshalled: this is a worker thread.
+                Try
+                    If Not AutoDownloaderWorking AndAlso RedGifsDiscovery.HasNewSinceReview Then _
+                       MainFrameObj.MF.BeginInvoke(Sub() MainFrameObj.MF.ShowRedGifsDiscovery())
+                Catch
+                End Try
             End Try
         End Sub
         Private Sub StartDownloading(ByRef _Job As Job)

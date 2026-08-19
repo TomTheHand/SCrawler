@@ -35,7 +35,9 @@ Public Class MainFrame
     Private MySearch As UserSearchForm
     Private MyUserMetrics As UsersInfoForm = Nothing
     Private MyActivityLog As ActivityLogForm = Nothing
+    Private MyRedGifsDiscovery As RedGifsDiscoveryForm = Nothing
     Private WithEvents BTT_ACTIVITY_LOG As ToolStripMenuItem
+    Private WithEvents BTT_RG_DISCOVERY As ToolStripMenuItem
     Private _UFinit As Boolean = True
 #End Region
 #Region "Initializer"
@@ -61,7 +63,10 @@ Public Class MainFrame
         BTT_SHOW_ALL_GROUPS = New ToolStripMenuItem("Show all groups", DownloadGroup.GroupImage)
         BTT_ACTIVITY_LOG = New ToolStripMenuItem("Activity log", My.Resources.InfoPic_32) With {
             .ToolTipText = "Open the 'Activity log' form (live feed of what the downloader is doing right now)."}
-        If Not MENU_INFO_USER_SEARCH.Owner Is Nothing Then MENU_INFO_USER_SEARCH.Owner.Items.Add(BTT_ACTIVITY_LOG)
+        BTT_RG_DISCOVERY = New ToolStripMenuItem("Discovered RedGifs accounts", My.Resources.UsersIcon_32.ToBitmap) With {
+            .ToolTipText = "RedGifs creator accounts found in your Reddit users' posts, ready to add."}
+        If Not MENU_INFO_USER_SEARCH.Owner Is Nothing Then _
+           MENU_INFO_USER_SEARCH.Owner.Items.AddRange({BTT_ACTIVITY_LOG, BTT_RG_DISCOVERY})
     End Sub
 #End Region
 #Region "Form handlers"
@@ -495,6 +500,18 @@ CloseResume:
             If MyActivityLog.Visible Then MyActivityLog.BringToFront() Else MyActivityLog.Show()
         Catch ex As Exception
             ErrorsDescriber.Execute(EDP.LogMessageValue, ex, "[MainFrame.BTT_ACTIVITY_LOG_Click]")
+        End Try
+    End Sub
+    Private Sub BTT_RG_DISCOVERY_Click(sender As Object, e As EventArgs) Handles BTT_RG_DISCOVERY.Click
+        ShowRedGifsDiscovery()
+    End Sub
+    ''' <summary>Opens the RedGifs discovery reviewer (also called after a run when new suggestions exist).</summary>
+    Friend Sub ShowRedGifsDiscovery()
+        Try
+            If MyRedGifsDiscovery Is Nothing Then MyRedGifsDiscovery = New RedGifsDiscoveryForm
+            If MyRedGifsDiscovery.Visible Then MyRedGifsDiscovery.BringToFront() Else MyRedGifsDiscovery.Show()
+        Catch ex As Exception
+            ErrorsDescriber.Execute(EDP.LogMessageValue, ex, "[MainFrame.ShowRedGifsDiscovery]")
         End Try
     End Sub
 #End Region
@@ -1049,6 +1066,16 @@ CloseResume:
                                                                         MsgBoxStyle.Exclamation + MsgBoxStyle.YesNo) = MsgBoxResult.Yes)
     End Function
     Private Sub BTT_CONTEXT_ADD_TO_COL_Click(sender As Object, e As EventArgs) Handles BTT_CONTEXT_ADD_TO_COL.Click
+        AddSelectedUsersToCollection()
+    End Sub
+    ''' <summary>
+    ''' Adds the users currently selected in the profile list to a collection (existing, if one of them
+    ''' is a collection; otherwise a new one chosen through <c>CollectionEditorForm</c>). Body of the
+    ''' context-menu command, exposed so it can also be driven programmatically — see
+    ''' <see cref="SelectUsers"/> and the RedGifs discovery viewer. Folder relocation and the usage-model
+    ''' prompts live in here, which is why callers reuse it rather than reimplementing them.
+    ''' </summary>
+    Friend Sub AddSelectedUsersToCollection()
         Const MsgTitle$ = "Add users to the collection"
         If Settings.CollectionsPath.Value.IsEmptyString Then
             MsgBoxE({"Collection path not specified", MsgTitle}, MsgBoxStyle.Exclamation)
@@ -1539,6 +1566,39 @@ CloseResume:
     Private Overloads Sub FocusUser(ByVal Key As String)
         FocusUser(Key, True)
     End Sub
+    ''' <summary>
+    ''' Selects the given users in the profile list, adding any that are not currently shown, and returns
+    ''' how many were found. Lets selection-driven commands (e.g. <see cref="AddSelectedUsersToCollection"/>)
+    ''' be invoked programmatically instead of duplicating their logic.
+    ''' </summary>
+    Friend Function SelectUsers(ByVal Keys As IEnumerable(Of String)) As Integer
+        Dim found% = 0
+        If Keys.ListExists Then
+            Dim a As Action = Sub()
+                                  LIST_PROFILES.Select()
+                                  LIST_PROFILES.SelectedIndices.Clear()
+                                  For Each k$ In Keys
+                                      If Not k.IsEmptyString Then
+                                          Dim i% = LIST_PROFILES.Items.IndexOfKey(k)
+                                          If i < 0 Then
+                                              Dim u As IUserData = Settings.GetUser(k, True)
+                                              If Not u Is Nothing Then
+                                                  i = LIST_PROFILES.Items.IndexOfKey(u.Key)
+                                                  If i < 0 Then UserListUpdate(u, True) : i = LIST_PROFILES.Items.IndexOfKey(u.Key)
+                                              End If
+                                          End If
+                                          If i >= 0 Then
+                                              With LIST_PROFILES.Items(i) : .Selected = True : .Focused = True : End With
+                                              LIST_PROFILES.EnsureVisible(i)
+                                              found += 1
+                                          End If
+                                      End If
+                                  Next
+                              End Sub
+            If LIST_PROFILES.InvokeRequired Then LIST_PROFILES.Invoke(a) Else a.Invoke
+        End If
+        Return found
+    End Function
     Friend Overloads Sub FocusUser(ByVal Key As String, Optional ByVal ActivateMe As Boolean = False)
         If Not Key.IsEmptyString Then
             Dim a As Action = Sub()
