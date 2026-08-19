@@ -632,6 +632,11 @@ Namespace DownloadObjects
                     Next
                     Thread.Sleep(200)
                 Loop
+                ' Reconcile cross-account duplicates only once EVERY job has drained. It must not go in
+                ' StartDownloading: jobs run on parallel threads (started just above), so a per-job hook
+                ' fires when the first job finishes — with, say, the RedGifs users done but Reddit users
+                ' still downloading in another job, their duplicates would be missed until the next run.
+                CrossAccountDedup.RemoveRedGifsDuplicates()
             Catch
             Finally
                 With MainProgress
@@ -688,11 +693,6 @@ Namespace DownloadObjects
                     End If
                     Thread.Sleep(500)
                 Loop
-                ' Everything in this job has finished, so collection members are all done regardless of
-                ' the order they were batched in — the point at which cross-account duplicates can be
-                ' reconciled safely. Skipped on cancel/error (the Catch blocks below); it simply runs
-                ' after the next completed job instead.
-                CrossAccountDedup.RemoveRedGifsDuplicates()
                 _Job.Progress.InformationTemporary = pt("All data downloaded")
             Catch oex As OperationCanceledException When _Job.IsCancellationRequested
                 _Job.Progress.InformationTemporary = pt("Downloading canceled")
