@@ -73,9 +73,31 @@ a RedGifs link does NOT prove the Reddit poster owns the account (crossposts/rep
 creators), so counts are shown and the user decides. Only covers posts processed this run (i.e. new
 posts), so the picture builds up over time rather than cataloguing the backlog at once.
 
-Next steps if the discovery data proves accurate: an end-of-run review dialog with one-click
-"add RedGifs account + put both in a collection", plus a persistent dismissed-list so rejected
-suggestions (foreign creators from crossposts) stop reappearing every run.
+**Step 1b — auto-add UI: DESIGNED, NOT BUILT.** User decisions (2026-08-15): **full auto** (create the
+RedGifs user, join the Reddit user's existing collection, and create a NEW collection when the Reddit
+user is standalone — accepting that this relocates its download folder), surfaced **both** ways (a
+persistent list opened from a menu item, plus a dialog after a run when there are new discoveries).
+User confirmed the scale of change is fine because it only runs when they explicitly accept.
+
+Findings from the implementation survey (do not re-derive these):
+- **`Editors.UserCreatorForm.TryCreate(URL)` is broken — it never uses its `URL` argument.** It news up
+  the form, calls `UserCreatorForm_Load`, and clicks OK; it works for the paste-a-URL button only
+  because the form reads the clipboard during Load. Do NOT use it as a programmatic seam.
+- Create a user directly instead, mirroring `MainFrame.BTT_ADD_USER_Click` (~line 424): 
+  `Dim u As New UserInfo(name, host)` (ctor sets Name/Site/Plugin + `UpdateUserFile`), then
+  `Settings.UpdateUsersList(u)`, `Settings.Users.Add(UserDataBase.GetInstance(u))`, set the options on
+  `Settings.Users.Last`, `.UpdateUserInformation()`, `UserListUpdate(..., True)`. Host comes from
+  `Settings(RedGifs.RedGifsSiteKey).Default`.
+- The collection flow is `MainFrame.BTT_CONTEXT_ADD_TO_COL_Click` (~line 1051). It is **selection-driven**
+  (`Dim users As List(Of IUserData) = GetSelectedUserArray()`) and interactive: `CollectionEditorForm`
+  for the name/path, `UsageModel` prompts, `New UserDataBind(name, dest)`, then folder relocation.
+  Replicating it is a bad idea — instead refactor its body into a `Friend Sub` the click handler
+  delegates to, select the two users, and call it, so the app's own move logic and prompts are reused.
+  It bails early when `Settings.CollectionsPath.Value` is empty.
+- Also needed: a persistent discovery store (accepted/dismissed status, so crosspost-sourced foreign
+  creators stop reappearing), a hand-written review dialog (no designer available), an Info-menu item,
+  and a post-run trigger. Reddit's `ReportRedGifsCreators` currently only writes to the activity log —
+  it should feed the store instead.
 
 **Step 2 — download once: DONE** (commit `17777b3`), as `Download\CrossAccountDedup.vb`.
 
