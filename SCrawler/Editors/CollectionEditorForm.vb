@@ -14,6 +14,17 @@ Namespace Editors
         Private WithEvents MyDefs As DefaultFormOptions
         Private ReadOnly Collections As List(Of String)
         Friend Property MyCollection As String = String.Empty
+        ''' <summary>
+        ''' Optional. Appended to the title bar so a caller that opens several of these in a row can say
+        ''' which users each one is for. Ignored when empty.
+        ''' </summary>
+        Friend Property MyContext As String = String.Empty
+        ''' <summary>
+        ''' Optional. A collection name to preselect, added to the list first if it does not exist yet, so
+        ''' a caller can propose a name without forcing it (unlike <see cref="MyCollection"/>, which only
+        ''' preselects names that already exist). Ignored when empty.
+        ''' </summary>
+        Friend Property MySuggestedCollection As String = String.Empty
         Private _MyCollectionSpecialPath As SFile = Nothing
         Friend ReadOnly Property MyCollectionSpecialPath As SFile
             Get
@@ -40,6 +51,15 @@ Namespace Editors
                     .DelegateClosingChecker = False
                     .EndLoaderOperations()
                 End With
+                ' Applied after EndLoaderOperations so the view initializer cannot overwrite them.
+                If Not MySuggestedCollection.IsEmptyString Then
+                    If Not Collections.Contains(MySuggestedCollection) Then
+                        Collections.Add(MySuggestedCollection)
+                        CMB_COLLECTIONS.Items.Add(MySuggestedCollection)
+                    End If
+                    CMB_COLLECTIONS.SelectedIndex = Collections.IndexOf(MySuggestedCollection)
+                End If
+                If Not MyContext.IsEmptyString Then Text = $"{Text} — {MyContext}"
             Catch ex As Exception
                 MyDefs.InvokeLoaderError(ex)
             End Try

@@ -1075,7 +1075,13 @@ CloseResume:
     ''' <see cref="SelectUsers"/> and the RedGifs discovery viewer. Folder relocation and the usage-model
     ''' prompts live in here, which is why callers reuse it rather than reimplementing them.
     ''' </summary>
-    Friend Sub AddSelectedUsersToCollection()
+    ''' <param name="ContextText">
+    ''' Optional. Shown in the collection chooser's title bar, so a caller driving this repeatedly can
+    ''' say which users the current prompt is for.
+    ''' </param>
+    ''' <param name="SuggestedCollectionName">Optional. Collection name to preselect in the chooser.</param>
+    Friend Sub AddSelectedUsersToCollection(Optional ByVal ContextText As String = Nothing,
+                                            Optional ByVal SuggestedCollectionName As String = Nothing)
         Const MsgTitle$ = "Add users to the collection"
         If Settings.CollectionsPath.Value.IsEmptyString Then
             MsgBoxE({"Collection path not specified", MsgTitle}, MsgBoxStyle.Exclamation)
@@ -1100,7 +1106,7 @@ CloseResume:
                     _col_name = userCollection.Name
                 End If
                 If _col_name.IsEmptyString Then
-                    Using f As New CollectionEditorForm
+                    Using f As New CollectionEditorForm With {.MyContext = ContextText, .MySuggestedCollection = SuggestedCollectionName}
                         f.ShowDialog()
                         If f.DialogResult = DialogResult.OK Then
                             _col_name = f.MyCollection

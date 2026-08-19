@@ -182,8 +182,8 @@ Namespace DownloadObjects
                         "Note: creating a NEW collection moves the Reddit user's existing download folder.",
                         Text}, vbQuestion,,, {"Continue", "Cancel"}) = 1 Then Exit Sub
             Dim done% = 0
-            For Each d As Discovery In items
-                If AcceptOne(d) Then done += 1
+            For i% = 0 To items.Count - 1
+                If AcceptOne(items(i), i + 1, items.Count) Then done += 1
             Next
             Refill()
             MsgBoxE({$"{done} of {items.Count} account(s) added.", Text}, IIf(done = items.Count, vbInformation, vbExclamation))
@@ -193,7 +193,7 @@ Namespace DownloadObjects
         ''' RedGifs user plus either the Reddit user's collection (join it) or the Reddit user itself
         ''' (new collection). Returns True when the account was created.
         ''' </summary>
-        Private Function AcceptOne(ByVal Item As Discovery) As Boolean
+        Private Function AcceptOne(ByVal Item As Discovery, ByVal Index As Integer, ByVal Total As Integer) As Boolean
             Try
                 Dim created As IUserData = CreateRedGifsUser(Item.RedGifsName)
                 If created Is Nothing Then
@@ -214,7 +214,13 @@ Namespace DownloadObjects
                 ActivityLog.Add($"RedGifs account [{Item.RedGifsName}] added from discovery under [{Item.RedditUser}]")
 
                 If MainFrameObj.MF.SelectUsers({partnerKey, created.Key}) >= 2 Then
-                    MainFrameObj.MF.AddSelectedUsersToCollection()
+                    ' Name the pair (and the position in the batch) in the chooser's title, and propose the
+                    ' Reddit user's name as the collection: accepting several at once otherwise gives a run
+                    ' of identical prompts with nothing to say which pair each belongs to. The "join an
+                    ' existing collection" path needs neither — its own confirmation already lists the users.
+                    Dim ctx$ = $"{Item.RedditUser} + {Item.RedGifsName}"
+                    If Total > 1 Then ctx = $"{Index} of {Total}: {ctx}"
+                    MainFrameObj.MF.AddSelectedUsersToCollection(ctx, Item.RedditUser)
                 Else
                     MsgBoxE({$"RedGifs user [{Item.RedGifsName}] was created, but the users could not be selected " &
                              "automatically — add them to a collection manually.", Text}, vbExclamation)
