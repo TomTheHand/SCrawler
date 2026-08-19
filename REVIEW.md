@@ -73,7 +73,25 @@ a RedGifs link does NOT prove the Reddit poster owns the account (crossposts/rep
 creators), so counts are shown and the user decides. Only covers posts processed this run (i.e. new
 posts), so the picture builds up over time rather than cataloguing the backlog at once.
 
-**Step 1b — auto-add UI: DESIGNED, NOT BUILT.** User decisions (2026-08-15): **full auto** (create the
+**Step 1b — auto-add UI: DONE** (commit `c99f007`). `Download\RedGifsDiscovery.vb` (persistent store,
+`Settings\RedGifsDiscoveries.xml`, keyed on RedGifs account + Reddit user, with a Dismissed flag) and
+`Download\RedGifsDiscoveryForm.vb` (reviewer). Reddit's `ReportRedGifsCreators` now feeds the store as
+well as the activity log; `RedGifsUserExists` moved into the store module. Reviewer opens from Info →
+"Discovered RedGifs accounts" and is also shown automatically after a run that recorded something new
+(never during a run, never when `AutoDownloaderWorking`; marshalled via `MainFrameObj.MF.BeginInvoke`
+since `JobsChecker` is a worker thread). Suggestions whose account already exists are filtered out, so
+accepting one removes it from the list implicitly.
+
+Accept path: `CreateRedGifsUser` mirrors `BTT_ADD_USER_Click`'s add sequence, then
+`MainFrameObj.MF.SelectUsers({partnerKey, newKey})` + `MainFrameObj.MF.AddSelectedUsersToCollection()`.
+`partnerKey` is the Reddit user's **collection** when it has one (collections, not their members, are
+what the profile list shows) and the Reddit user itself otherwise — so joining and creating both work
+through SCrawler's own code, folder moves and usage-model prompts included. Enablers added to
+MainFrame: `SelectUsers(Keys)` and the context-menu body promoted to `Friend Sub
+AddSelectedUsersToCollection`. **Not yet exercised at runtime** — the dialog compiles but the
+click-through (create + collection prompts) has not been driven; try one suggestion first.
+
+*(Original design notes, retained — the findings still apply.)* User decisions (2026-08-15): **full auto** (create the
 RedGifs user, join the Reddit user's existing collection, and create a NEW collection when the Reddit
 user is standalone — accepting that this relocates its download folder), surfaced **both** ways (a
 persistent list opened from a menu item, plus a dialog after a run when there are new discoveries).
