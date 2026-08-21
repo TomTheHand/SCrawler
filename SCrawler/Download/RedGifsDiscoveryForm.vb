@@ -175,10 +175,9 @@ Namespace DownloadObjects
                 MsgBoxE({"Collection path not specified — set it in the settings before adding accounts to collections.", Text}, vbCritical)
                 Exit Sub
             End If
-            ' One at a time: each acceptance opens SCrawler's own collection dialog, so batching them
-            ' into a single operation would be misleading about what is happening.
             If MsgBoxE({$"{items.Count} account(s) will be created and put into a collection with the Reddit user each was found under." & vbCr &
-                        "You will be asked to confirm the collection for each one." & vbCr & vbCr &
+                        "A new collection is named after that Reddit user; if the Reddit user is already in a collection, " &
+                        "the account joins that one instead." & vbCr & vbCr &
                         "Note: creating a NEW collection moves the Reddit user's existing download folder.",
                         Text}, vbQuestion,,, {"Continue", "Cancel"}) = 1 Then Exit Sub
             Dim done% = 0
@@ -210,21 +209,23 @@ Namespace DownloadObjects
                     If Not col Is Nothing Then partnerKey = col.Key
                 End If
 
-                RedGifsDiscovery.Forget(Item)
                 ActivityLog.Add($"RedGifs account [{Item.RedGifsName}] added from discovery under [{Item.RedditUser}]")
 
                 If MainFrameObj.MF.SelectUsers({partnerKey, created.Key}) >= 2 Then
-                    ' Name the pair (and the position in the batch) in the chooser's title, and propose the
-                    ' Reddit user's name as the collection: accepting several at once otherwise gives a run
-                    ' of identical prompts with nothing to say which pair each belongs to. The "join an
-                    ' existing collection" path needs neither — its own confirmation already lists the users.
+                    ' Name a new collection after the Reddit user and skip the chooser: the pairing is
+                    ' already decided by accepting the suggestion, and being asked to name it — after the
+                    ' entry has left this list — meant having to remember the Reddit name. When the Reddit
+                    ' user is already in a collection, that collection wins and this is ignored.
+                    ' Context/suggestion are still passed for the fallback case where no name can be derived.
                     Dim ctx$ = $"{Item.RedditUser} + {Item.RedGifsName}"
                     If Total > 1 Then ctx = $"{Index} of {Total}: {ctx}"
-                    MainFrameObj.MF.AddSelectedUsersToCollection(ctx, Item.RedditUser)
+                    Dim newColName$ = If(Item.RedditUser, String.Empty).StringRemoveWinForbiddenSymbols.StringTrim
+                    MainFrameObj.MF.AddSelectedUsersToCollection(ctx, newColName, newColName)
                 Else
                     MsgBoxE({$"RedGifs user [{Item.RedGifsName}] was created, but the users could not be selected " &
                              "automatically — add them to a collection manually.", Text}, vbExclamation)
                 End If
+                RedGifsDiscovery.Forget(Item)
                 Return True
             Catch ex As Exception
                 ErrorsDescriber.Execute(EDP.SendToLog, ex, $"RedGifsDiscoveryForm.AcceptOne({Item.RedGifsName})")

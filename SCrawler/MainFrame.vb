@@ -1080,8 +1080,14 @@ CloseResume:
     ''' say which users the current prompt is for.
     ''' </param>
     ''' <param name="SuggestedCollectionName">Optional. Collection name to preselect in the chooser.</param>
+    ''' <param name="ForcedCollectionName">
+    ''' Optional. Use this collection name outright and skip the chooser entirely (an existing collection
+    ''' among the selected users still wins, as it does normally). For callers that already know the name
+    ''' the collection should have; the collection is created under the default collections path.
+    ''' </param>
     Friend Sub AddSelectedUsersToCollection(Optional ByVal ContextText As String = Nothing,
-                                            Optional ByVal SuggestedCollectionName As String = Nothing)
+                                            Optional ByVal SuggestedCollectionName As String = Nothing,
+                                            Optional ByVal ForcedCollectionName As String = Nothing)
         Const MsgTitle$ = "Add users to the collection"
         If Settings.CollectionsPath.Value.IsEmptyString Then
             MsgBoxE({"Collection path not specified", MsgTitle}, MsgBoxStyle.Exclamation)
@@ -1105,6 +1111,9 @@ CloseResume:
                         MsgBoxE({"The collection cannot be added to the collection!", MsgTitle}, MsgBoxStyle.Critical) : Exit Sub
                     _col_name = userCollection.Name
                 End If
+                ' A caller that already knows the name skips the chooser; the chooser (and its context
+                ' labelling) remains the fallback when no name was supplied.
+                If _col_name.IsEmptyString AndAlso Not ForcedCollectionName.IsEmptyString Then _col_name = ForcedCollectionName
                 If _col_name.IsEmptyString Then
                     Using f As New CollectionEditorForm With {.MyContext = ContextText, .MySuggestedCollection = SuggestedCollectionName}
                         f.ShowDialog()
