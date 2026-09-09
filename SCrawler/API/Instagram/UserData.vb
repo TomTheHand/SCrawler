@@ -551,11 +551,19 @@ Namespace API.Instagram
         ''' <see cref="MediaFromData"/> uses to name the file — which makes it stable even though the
         ''' stored file name carries a date prefix and the signed CDN URL itself expires.
         ''' </summary>
+        ''' <summary>
+        ''' Instagram does not override <c>CreateFileFromUrl</c>, so the base derivation would be applied to
+        ''' the raw signed URL. Use the same <c>FilesPattern</c> regex <see cref="MediaFromData"/> names
+        ''' files with, which strips the query string.
+        ''' </summary>
+        Friend Overrides Function MediaDedupKey(ByVal Media As UserMedia) As String
+            If Media.URL.IsEmptyString Then Return String.Empty
+            Return CStr(RegexReplace(Media.URL, FilesPattern))
+        End Function
         Private Sub RemoveDuplicateMedia()
             Try
                 If _TempMediaList.Count = 0 Then Exit Sub
-                Dim assetOf As Func(Of UserMedia, String) =
-                    Function(m) If(m.URL.IsEmptyString, String.Empty, CStr(RegexReplace(m.URL, FilesPattern)))
+                Dim assetOf As Func(Of UserMedia, String) = Function(m) MediaDedupKey(m)
 
                 ' Already on disk. Only Downloaded counts — a Missing record still needs fetching.
                 Dim owned As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)

@@ -2203,6 +2203,32 @@ stxt:
         Protected Overridable Function CreateFileFromUrl(ByVal URL As String) As SFile
             Return New SFile(URL)
         End Function
+        ''' <summary>
+        ''' Stable identity for one media item, used by every de-duplication path (see
+        ''' <see cref="DownloadObjects.CrossAccountDedup"/> and Instagram's cross-section pass).
+        '''
+        ''' Derived from the URL, deliberately NOT from:
+        ''' <list type="bullet">
+        ''' <item><see cref="UserMedia.File"/> — a stored record's file name carries a download-time date
+        ''' prefix, so it never matches a freshly parsed item.</item>
+        ''' <item><see cref="UserPost.ID"/> — a gallery's items all share one post ID, and some sites
+        ''' store an unrelated ID there anyway (a Reddit item sourced from RedGifs keeps the *Reddit*
+        ''' post ID while its URL names the RedGifs asset).</item>
+        ''' </list>
+        ''' The extension is part of the key on purpose: Instagram deliberately records the same asset
+        ''' under two extensions (see ValidateExtension's heic/jpg pair) and those must stay distinct.
+        ''' Compare keys case-insensitively — the same asset can be cased differently across sites.
+        ''' </summary>
+        Friend Overridable Function MediaDedupKey(ByVal Media As UserMedia) As String
+            Try
+                If Media.URL.IsEmptyString Then Return String.Empty
+                Dim f As SFile = CreateFileFromUrl(Media.URL)
+                If f.Name.IsEmptyString Then Return String.Empty
+                Return If(f.Extension.IsEmptyString, f.Name, $"{f.Name}.{f.Extension}")
+            Catch
+                Return String.Empty
+            End Try
+        End Function
         Protected Overridable Function SimpleDownloadAvatar(ByVal ImageAddress As String, Optional ByVal FileCreateFunc As Func(Of String, SFile) = Nothing,
                                                             Optional ByVal e As ErrorsDescriber = Nothing) As SFile
             Try

@@ -107,6 +107,16 @@ Namespace API.RedGifs
                 Return False
             End If
         End Function
+        ''' <summary>
+        ''' RedGifs does not override <c>CreateFileFromUrl</c>, so use the same <c>FilesPattern</c> regex
+        ''' <see cref="MediaFromData"/> names files with. Yields the CamelCase asset name (e.g.
+        ''' "AliveGraveZigzagsalamander.mp4"), which is the same identity Reddit's copy of the gif carries
+        ''' in its own URL — that is what lets the two be matched across a collection.
+        ''' </summary>
+        Friend Overrides Function MediaDedupKey(ByVal Media As UserMedia) As String
+            If Media.URL.IsEmptyString Then Return String.Empty
+            Return CStr(RegexReplace(Media.URL, FilesPattern))
+        End Function
         Private Overloads Sub DownloadData(ByVal Page As Integer, ByVal Token As CancellationToken)
             Dim URL$ = String.Empty
             Try

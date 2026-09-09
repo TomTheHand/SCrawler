@@ -52,20 +52,27 @@ Namespace DownloadObjects
                 Dim redditUsers As List(Of UserDataBase) = MembersOfSite(Collection, Reddit.RedditSiteKey)
                 If redGifsUsers.Count = 0 Or redditUsers.Count = 0 Then Exit Sub
 
-                ' Every gif ID the RedGifs side of this collection holds. RedGifs stores the gif ID
-                ' directly as the post ID (see RedGifs.UserData.GetDataFromUrlId).
-                Dim ownedIds As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+                ' Everything the RedGifs side of this collection holds, under BOTH identities it can be
+                ' recognised by: the gif ID (which RedGifs stores directly as the post ID, lowercased) and
+                ' the shared MediaDedupKey (the CamelCase asset file name from the URL). They denote the
+                ' same gif — "alivegravezigzagsalamander" vs "AliveGraveZigzagsalamander.mp4" — but each
+                ' covers a case the other can miss, so both are collected and compared case-insensitively.
+                Dim owned As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
                 For Each rgUser As UserDataBase In redGifsUsers
                     For Each m As UserMedia In rgUser.ContentSnapshot
-                        If Not m.Post.ID.IsEmptyString Then ownedIds.Add(m.Post.ID)
+                        If Not m.Post.ID.IsEmptyString Then owned.Add(m.Post.ID)
+                        Dim k$ = rgUser.MediaDedupKey(m)
+                        If Not k.IsEmptyString Then owned.Add(k)
                     Next
                 Next
-                If ownedIds.Count = 0 Then Exit Sub
+                If owned.Count = 0 Then Exit Sub
 
                 For Each redditUser As UserDataBase In redditUsers
-                    Dim removed% = redditUser.RemoveContentAndRecycleFiles(Function(m) IsDuplicateOfOwnedGif(m, ownedIds))
+                    ' Local copy: capturing the loop variable in the lambda below warns (BC42324).
+                    Dim ru As UserDataBase = redditUser
+                    Dim removed% = ru.RemoveContentAndRecycleFiles(Function(m) IsOwnedDuplicate(ru, m, owned))
                     If removed > 0 Then _
-                       ActivityLog.Add($"[{redditUser.Site}] {redditUser.Name}: {removed} RedGifs duplicate(s) " &
+                       ActivityLog.Add($"[{ru.Site}] {ru.Name}: {removed} RedGifs duplicate(s) " &
                                        $"recycled — kept under the RedGifs account in collection [{Collection.CollectionName}]")
                 Next
             Catch ex As Exception
@@ -85,14 +92,22 @@ Namespace DownloadObjects
         ''' Is this Reddit-side item a RedGifs video the collection's RedGifs account already holds?
         ''' Only downloaded items are considered — a Missing record has no file to recycle, and dropping
         ''' it would lose the retry budget that may still recover it.
+        '''
+        ''' Checks the shared <see cref="UserDataBase.MediaDedupKey"/> and the RedGifs gif ID. The two are
+        ''' the same identity in different forms, but neither alone is sufficient: the key is absent if the
+        ''' URL was never resolved to the CDN, and the gif ID is unavailable for a link shape
+        ''' <c>GetVideoIdFromUrl</c> does not recognise. A hit on either is proof enough.
         ''' </summary>
-        Private Function IsDuplicateOfOwnedGif(ByVal Media As UserMedia, ByVal OwnedIds As HashSet(Of String)) As Boolean
+        Private Function IsOwnedDuplicate(ByVal User As UserDataBase, ByVal Media As UserMedia,
+                                          ByVal Owned As HashSet(Of String)) As Boolean
             If Not Media.State = UStates.Downloaded Then Return False
+            Dim key$ = User.MediaDedupKey(Media)
+            If Not key.IsEmptyString AndAlso Owned.Contains(key) Then Return True
             ' URL_BASE holds the original redgifs watch URL (set in Reddit.UserData.ReparseVideo);
             ' URL is the resolved CDN link, which also carries the ID. Try both.
             Dim id$ = RedGifs.UserData.GetVideoIdFromUrl(Media.URL_BASE)
             If id.IsEmptyString Then id = RedGifs.UserData.GetVideoIdFromUrl(Media.URL)
-            Return Not id.IsEmptyString AndAlso OwnedIds.Contains(id)
+            Return Not id.IsEmptyString AndAlso Owned.Contains(id)
         End Function
     End Module
 End Namespace
