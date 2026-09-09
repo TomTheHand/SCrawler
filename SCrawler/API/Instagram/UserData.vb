@@ -808,7 +808,20 @@ Namespace API.Instagram
 
                         'Parsing
                         If Not r.IsEmptyString Then
-                            Using j As EContainer = JsonDocument.Parse(r).XmlIfNothing
+                            ' Tolerate a non-JSON body. Instagram sometimes answers HTTP 200 with something that
+                            ' is not JSON at all (a challenge/interstitial page — once, literally "."). Letting
+                            ' the parser throw sent that to DownloadingException, which saw a 200, matched none
+                            ' of its status branches, and fell through to "credentials may have expired" — which
+                            ' calls DisableSection and switches off every Instagram section in the SAVED site
+                            ' settings. One junk response should not reconfigure the site.
+                            Dim jsonParsed As EContainer = JsonDocument.Parse(r, New ErrorsDescriber(EDP.ReturnValue))
+                            If jsonParsed Is Nothing Then
+                                Dim scJson% = CInt(Responser.StatusCode)
+                                MyMainLOG = $"{ToStringForLog()}: Instagram — response was not JSON [{URL}]" &
+                                            $"{If(scJson <> 0, $" (HTTP {scJson})", String.Empty)}; section [{Section}] skipped."
+                                Throw New ExitException
+                            End If
+                            Using j As EContainer = jsonParsed
                                 n = If(ENode Is Nothing, j, j.ItemF(ENode)).XmlIfNothing
                                 If n.Count > 0 Then
                                     Select Case Section
@@ -1538,6 +1551,16 @@ NextPageBlock:
                 ErrHandling = Responser.Status
                 ErrHandlingSection = s
                 Return ErrHandlingValue
+            ElseIf CInt(Responser.StatusCode) >= 200 And CInt(Responser.StatusCode) < 300 Then
+                ' The request SUCCEEDED — whatever failed is in the body or in our handling of it, not in
+                ' the credentials. Deliberately does NOT call DisableSection: that writes the persisted
+                ' site settings, and because ReadyToDownload requires DownloadTimeline it would switch off
+                ' Instagram entirely (and every remaining user in the batch) over one bad response.
+                MyMainLOG = $"Instagram — unexpected response on a successful request [{CInt(Responser.StatusCode)}]: " &
+                            $"{ToStringForLog()} [{s}]. Credentials and site settings left untouched."
+                If Not FromPE Then LogError(ex, Message)
+                HasError = True
+                Return 0
             Else
                 MyMainLOG = $"Something is wrong. Your credentials may have expired [{CInt(Responser.StatusCode)}/{CInt(Responser.Status)}]: {ToString()} [{s}]"
                 DisableSection(s)

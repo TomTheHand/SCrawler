@@ -81,6 +81,24 @@ Namespace API.RedGifs
                 Return True
             End If
         End Function
+        ''' <summary>
+        ''' Refresh the token because a request was actually rejected with 401, rather than because the
+        ''' refresh interval elapsed. <see cref="UpdateTokenIfRequired"/> only refreshes once
+        ''' <see cref="TokenUpdateInterval"/> has passed, so a token RedGifs invalidates early leaves every
+        ''' request returning 401 for the rest of the run with nothing to trigger a refresh.
+        '''
+        ''' Skips the network call when a refresh already happened within <paramref name="WithinSeconds"/>,
+        ''' so a batch of users all hitting 401 at once causes one refresh instead of one per user.
+        ''' RedGifs temporary tokens are anonymous (/v2/auth/temporary), so minting one costs nothing and
+        ''' needs no credentials.
+        ''' </summary>
+        ''' <returns>True when a usable token is in place afterwards.</returns>
+        Friend Function RefreshTokenAfterAuthFailure(Optional ByVal WithinSeconds As Integer = 30) As Boolean
+            While _TokenUpdating : Threading.Thread.Sleep(100) : End While
+            Dim d As Date? = AConvert(Of Date)(TokenLastDateUpdated.Value, AModes.Var, Nothing)
+            If d.HasValue AndAlso d.Value > Now.AddSeconds(-WithinSeconds) Then Return ACheck(Token.Value)
+            Return UpdateToken_Impl()
+        End Function
         <PropertyUpdater(NameOf(Token))>
         Friend Function UpdateToken() As Boolean
             While _TokenUpdating : Threading.Thread.Sleep(100) : End While

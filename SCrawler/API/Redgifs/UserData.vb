@@ -48,6 +48,7 @@ Namespace API.RedGifs
         ' returns HTTP 401 → Responser returns "" → the gifs loop never runs → the download
         ' appears to complete successfully with nothing downloaded and no error in the log.
         Protected Overrides Sub DownloadDataF(ByVal Token As CancellationToken)
+            _TokenRetried = False
             If Not MySettings.UseCookies.Value Then Responser.Cookies.Clear()
             ' Refresh auth token if expired; bail early with a log if the refresh itself fails.
             If Not MySettings.UpdateTokenIfRequired() Then
@@ -69,6 +70,43 @@ Namespace API.RedGifs
         '      being null (same bug as Reddit). Now caught and treated as case 1.
         ' Note: Exit Sub on duplicate postID is expected behaviour (API is newest-first; once we
         ' hit a known post everything behind it is also known). Not an error — not logged.
+        ''' <summary>Exactly one token refresh is attempted per user per run — a second 401 is a real failure.</summary>
+        Private _TokenRetried As Boolean = False
+        ''' <summary>
+        ''' Requests <paramref name="URL"/>; if it comes back 401, refreshes the temporary token ONCE and
+        ''' retries. Handles both shapes the failure takes: an exception (the declared error handling throws)
+        ''' and an empty string (it does not).
+        ''' </summary>
+        Private Function GetResponseRetryAuth(ByVal URL As String) As String
+            Dim r$ = String.Empty
+            Try
+                r = SafeGetResponse(Responser, URL)
+            Catch oex As OperationCanceledException
+                Throw
+            Catch ex As Exception
+                ' Only a 401 is worth a refresh; anything else is handled as usual by the caller.
+                If Not IsAuthFailure() OrElse Not RefreshTokenOnce() Then Throw
+                Return SafeGetResponse(Responser, URL)
+            End Try
+            If r.IsEmptyString AndAlso IsAuthFailure() AndAlso RefreshTokenOnce() Then r = SafeGetResponse(Responser, URL)
+            Return r
+        End Function
+        Private Function IsAuthFailure() As Boolean
+            Return Responser.StatusCode = HttpStatusCode.Unauthorized
+        End Function
+        ''' <summary>Refreshes the token and re-applies it to this user's Responser copy. False if already tried, or the refresh failed.</summary>
+        Private Function RefreshTokenOnce() As Boolean
+            If _TokenRetried Then Return False
+            _TokenRetried = True
+            If MySettings.RefreshTokenAfterAuthFailure() AndAlso ACheck(MySettings.Token.Value) Then
+                Responser.Headers.Add("authorization", MySettings.Token.Value)
+                MyMainLOG = $"{ToStringForLog()}: RedGifs token was rejected (401) — refreshed the token and retrying once."
+                Return True
+            Else
+                MyMainLOG = $"{ToStringForLog()}: RedGifs token was rejected (401) and refreshing it failed."
+                Return False
+            End If
+        End Function
         Private Overloads Sub DownloadData(ByVal Page As Integer, ByVal Token As CancellationToken)
             Dim URL$ = String.Empty
             Try
@@ -76,7 +114,7 @@ Namespace API.RedGifs
                 URL = $"https://api.redgifs.com/v2/users/{Name}/search?order=recent{_page.Invoke}"
                 ' SafeGetResponse swallows the PersonalUtilities _ErrorProcessor NullRef (Bug 3);
                 ' the empty-response Else branch below logs the HTTP status.
-                Dim r$ = SafeGetResponse(Responser, URL)
+                Dim r$ = GetResponseRetryAuth(URL)
                 Dim postDate$, postID$
                 Dim pTotal% = 0
                 If Not r.IsEmptyString Then
@@ -315,7 +353,24 @@ Namespace API.RedGifs
                         ' converts %5c → \ first, then Replace strips the resulting backslash.
                         Obj = Uri.UnescapeDataString(Obj).Replace("\", String.Empty)
                         URL = String.Format(PostDataUrl, Obj.ToLower)
-                        Dim r$ = Responser.GetResponse(URL,, EDP.ThrowException)
+                        ' One reactive token refresh, same reasoning as UserData.GetResponseRetryAuth: an
+                        ' early-invalidated token otherwise 401s every gif lookup for the rest of the run —
+                        ' including the lookups Reddit makes to resolve its RedGifs links.
+                        Dim r$ = String.Empty
+                        Dim authRetried As Boolean = False
+                        Do
+                            Try
+                                r = Responser.GetResponse(URL,, EDP.ThrowException)
+                                Exit Do
+                            Catch exAuth As Exception When Not authRetried AndAlso
+                                                           Responser.Client.StatusCode = HttpStatusCode.Unauthorized
+                                authRetried = True
+                                Dim st As SiteSettings = TryCast(Host.Source, SiteSettings)
+                                If st Is Nothing OrElse Not st.RefreshTokenAfterAuthFailure() OrElse Not ACheck(st.Token.Value) Then Throw
+                                Responser.Headers.Add("authorization", st.Token.Value)
+                                MyMainLOG = $"RedGifs token was rejected (401) on a gif lookup — refreshed the token and retrying once."
+                            End Try
+                        Loop
                         If Not r.IsEmptyString Then
                             Using j As EContainer = JsonDocument.Parse(r)
                                 If Not j Is Nothing Then
