@@ -527,12 +527,72 @@ Namespace API.Instagram
                 ' activity-log threshold, so without this the bulk of a long gap stays unexplained.
                 If _WaitTotalMs >= 1000 Then _
                    DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: spent {(_WaitTotalMs / 1000).ToString("0")}s waiting on pacing timers")
+                ' In the Finally, not at the end of the Try: sections routinely end by throwing
+                ' ExitException, so a Try-tail call would be skipped exactly when it is needed.
+                RemoveDuplicateMedia()
                 UpdateResponser()
                 ValidateExtension()
                 If Not errorFound Then LoadSavePostsKV(False)
             End Try
         End Sub
         'TODELETE: ValidateExtension
+        ''' <summary>
+        ''' Drops freshly parsed media that duplicates something else — either already on disk from a
+        ''' previous run, or parsed twice within this run.
+        '''
+        ''' Needed because one post is reachable from more than one section: a reel also appears in the
+        ''' profile grid, so it is parsed once as Reels and again as Timeline, and nothing downstream
+        ''' catches it — <c>DownloadContentDefault</c>'s MD5 comparison deliberately covers only
+        ''' GIF/Picture, and RedGifs-style video duplicates are exactly the case here.
+        '''
+        ''' Matched on the CDN asset name, NOT on <c>Post.ID</c>: a carousel's items all share a single
+        ''' post ID, so post-level matching would throw away the rest of a partially downloaded gallery.
+        ''' The asset name comes from the URL via <c>FilesPattern</c> — the same derivation
+        ''' <see cref="MediaFromData"/> uses to name the file — which makes it stable even though the
+        ''' stored file name carries a date prefix and the signed CDN URL itself expires.
+        ''' </summary>
+        Private Sub RemoveDuplicateMedia()
+            Try
+                If _TempMediaList.Count = 0 Then Exit Sub
+                Dim assetOf As Func(Of UserMedia, String) =
+                    Function(m) If(m.URL.IsEmptyString, String.Empty, CStr(RegexReplace(m.URL, FilesPattern)))
+
+                ' Already on disk. Only Downloaded counts — a Missing record still needs fetching.
+                Dim owned As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+                For Each m As UserMedia In _ContentList
+                    If m.State = UStates.Downloaded Then
+                        Dim a$ = assetOf(m)
+                        If Not a.IsEmptyString Then owned.Add(a)
+                    End If
+                Next
+
+                Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+                Dim ownedHits% = 0, runHits% = 0
+                ' Forward pass so the FIRST occurrence is the one kept; collect then remove in reverse.
+                Dim drop As New List(Of Integer)
+                For i% = 0 To _TempMediaList.Count - 1
+                    Dim a$ = assetOf(_TempMediaList(i))
+                    ' No asset name means no reliable key — never drop on a blank.
+                    If Not a.IsEmptyString AndAlso Not _TempMediaList(i).State = UStates.Missing Then
+                        If owned.Contains(a) Then
+                            drop.Add(i) : ownedHits += 1
+                        ElseIf seen.Contains(a) Then
+                            drop.Add(i) : runHits += 1
+                        Else
+                            seen.Add(a)
+                        End If
+                    End If
+                Next
+                For i% = drop.Count - 1 To 0 Step -1 : _TempMediaList.RemoveAt(drop(i)) : Next
+
+                If ownedHits > 0 Then DownloadObjects.ActivityLog.Add(
+                    $"[{Site}] {Name}: skipped {ownedHits} item(s) already downloaded (same media reached from another section)")
+                If runHits > 0 Then DownloadObjects.ActivityLog.Add(
+                    $"[{Site}] {Name}: skipped {runHits} item(s) parsed twice this run (same media in two sections)")
+            Catch ex As Exception
+                ErrorsDescriber.Execute(EDP.SendToLog, ex, $"{ToStringForLog()}: RemoveDuplicateMedia")
+            End Try
+        End Sub
         Protected Sub ValidateExtension()
             'Dim tmpList As List(Of UserMedia) = Nothing
             'Try
