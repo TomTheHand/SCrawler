@@ -413,7 +413,12 @@ Namespace API.Instagram
                                                     Else
                                                         ____v = CInt(.SleepTimerRequestsNextProfile.Value)
                                                     End If
-                                                    If ____v > 0 Then firstWait = True : Thread.Sleep(____v)
+                                                    ' Usually the longest pause of the whole profile, and it was
+                                                    ' entirely silent. Note -2 means "use max timer", which
+                                                    ' resolves to the largest of the other three timers — so
+                                                    ' raising the posts-limit timer silently lengthens this too.
+                                                    If ____v > 0 Then firstWait = True : WaitLogged(____v,
+                                                       $"pacing before this profile{If(CInt(.SleepTimerRequestsNextProfile.Value) = -2, " (next-profile timer is -2 = use max timer)", String.Empty)}")
                                                 End If
                                             End With
                                         End Sub
@@ -424,6 +429,7 @@ Namespace API.Instagram
                 ErrHandlingSection = Sections.Timeline
                 _Limit = If(DownloadTopCount, -1)
                 _TotalPostsParsed = 0
+                _WaitTotalMs = 0
                 LoadSavePostsKV(True)
                 _DownloadingInProgress = True
                 AddHandler Responser.ResponseReceived, AddressOf Responser_ResponseReceived
@@ -504,6 +510,10 @@ Namespace API.Instagram
                 DefaultParser_ElemNode = Nothing
                 GetReelsGQL_SetEnvir = False
                 E560Thrown = False
+                ' Account for the profile's total pacing time: individually most waits are below the
+                ' activity-log threshold, so without this the bulk of a long gap stays unexplained.
+                If _WaitTotalMs >= 1000 Then _
+                   DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: spent {(_WaitTotalMs / 1000).ToString("0")}s waiting on pacing timers")
                 UpdateResponser()
                 ValidateExtension()
                 If Not errorFound Then LoadSavePostsKV(False)
@@ -550,8 +560,27 @@ Namespace API.Instagram
         Private Const MaxPostsCount As Integer = 200
         Friend Property RequestsCount As Integer = 0
         Friend Property RequestsCountSession As Integer = 0
+        ''' <summary>A wait at or above this goes to the activity log; shorter ones only reach the status bar.</summary>
+        Private Const WaitLogThresholdMs As Integer = 10000
+        ''' <summary>Total deliberate waiting for the current profile, reported when it finishes.</summary>
+        Private _WaitTotalMs As Integer = 0
+        ''' <summary>
+        ''' Sleeps, saying why. Instagram's pacing is configurable and can be long — with the "next profile
+        ''' timer" left at -2 it inherits the LARGEST of the other timers — so an uninstrumented sleep is
+        ''' indistinguishable from a hang. Short waits would swamp the log (there are ~15 request sites), so
+        ''' only waits of <see cref="WaitLogThresholdMs"/> or more get a line; the rest show live in the
+        ''' status bar and are counted into the per-profile total.
+        ''' </summary>
+        Private Sub WaitLogged(ByVal Milliseconds As Integer, ByVal Reason As String)
+            If Milliseconds <= 0 Then Exit Sub
+            Dim msg$ = $"waiting {(Milliseconds / 1000).ToString("0.#")}s — {Reason}"
+            If Not Progress Is Nothing Then Progress.InformationTemporary = $"Instagram: {msg}"
+            If Milliseconds >= WaitLogThresholdMs Then DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: {msg}")
+            _WaitTotalMs += Milliseconds
+            Thread.Sleep(Milliseconds)
+        End Sub
         Private Sub UpdateRequestNumber()
-            If CInt(MySiteSettings.RequestsWaitTimer_Any.Value) > 0 Then Thread.Sleep(CInt(MySiteSettings.RequestsWaitTimer_Any.Value))
+            WaitLogged(CInt(MySiteSettings.RequestsWaitTimer_Any.Value), "pacing before each request")
             RequestsCount += 1
             RequestsCountSession += 1
         End Sub
@@ -606,17 +635,11 @@ Namespace API.Instagram
         End Sub
         Private Sub NextRequest(ByVal StartWait As Boolean)
             With MySiteSettings
-                If StartWait And RequestsCount > 0 And (RequestsCount Mod .RequestsWaitTimerTaskCount.Value) = 0 Then Thread.Sleep(CInt(.RequestsWaitTimer.Value))
-                If RequestsCount >= MaxPostsCount - 5 Then
-                    ' Proactive self-throttle: pause to avoid hitting Instagram's request limit.
-                    ' Without the activity-log/label update below, this is a silent multi-second
-                    ' freeze — indistinguishable from a hang. Cooldowns go to the activity log
-                    ' (live health view), not MyMainLOG (the error log).
-                    Dim waitMsg$ = $"rate-limit self-throttle — pausing {CInt(.SleepTimerOnPostsLimit.Value) \ 1000}s (request #{RequestsCount})"
-                    DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: {waitMsg}")
-                    If Not Progress Is Nothing Then Progress.InformationTemporary = $"Instagram: {waitMsg}"
-                    Thread.Sleep(CInt(.SleepTimerOnPostsLimit.Value))
-                End If
+                If StartWait And RequestsCount > 0 And (RequestsCount Mod .RequestsWaitTimerTaskCount.Value) = 0 Then _
+                   WaitLogged(CInt(.RequestsWaitTimer.Value), "pacing between requests")
+                ' Proactive self-throttle so Instagram's own request limit is never reached.
+                If RequestsCount >= MaxPostsCount - 5 Then _
+                   WaitLogged(CInt(.SleepTimerOnPostsLimit.Value), $"self-throttle near the request limit (request #{RequestsCount} of {MaxPostsCount})")
             End With
         End Sub
 #End Region
