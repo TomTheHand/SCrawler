@@ -66,6 +66,37 @@ through to the SPA. **Fix is a setting, not code: enable "Use GraphQL to downloa
 upstream author posted the same advice on Discord independently. Consistent with SCrawler already
 defaulting `USE_GQL_UserData` and `USE_GQL_Highlights` to True — the main feed was the last REST holdout.
 
+### 2026-09-09 — Instagram: a reel masked the same post in the timeline
+
+Symptom: with GraphQL enabled some users downloaded fine, others produced nothing with **no error**.
+Diagnosis came from the per-user `Posts_KV.xml` `Section` attribute (`Timeline=0, Reels=1`): a working
+user had `sec0=218 sec1=110`, the broken ones had `sec1=35 / sec0=0` — they had **never** recorded a
+single timeline post.
+
+Mechanism, two parts:
+- `DefaultParser` stops a section at the first already-known post (`Return False`, halting pagination).
+  This is the ordinary "caught up" path, which is why nothing was logged.
+- `PostKvExists`'s `_TempPostsList` fallback cannot tell which section a post came from:
+  `DefaultParser` stores **raw, unprefixed** IDs for every section (line ~1125), and
+  `GetPostIdBySection` returns Timeline IDs **unprefixed** — so a post already downloaded as a Reel
+  (reels also appear in the profile grid) reads as already-seen for the Timeline. **Note: deleting the
+  one obviously section-less check was NOT the fix — the section-aware check is equally blind for
+  Timeline precisely because Timeline's prefix is empty.**
+
+Consequence: the REST outage became permanent for affected users. Reels ran on GraphQL while the
+timeline failed, banking reels-only history that then blocked the timeline forever once it worked again
+— aborting at item 1 of page 1.
+
+Fix: use the section-aware `PostsKVIDs` to reject the false positive, but only on **positive evidence**
+(the ID is recorded under another section and not under this one); anything less certain keeps the old
+behaviour, so users with normal timeline history are untouched. Also added a diagnostic line naming the
+section, the post a scan stopped on, and its position in the page — "item 1 of 12" means the scan
+covered nothing.
+
+**Open follow-up:** the timeline will now re-fetch posts that overlap reels already on disk. Videos are
+excluded from MD5 comparison (see the 2026-08-15 dedup entry), so the existing de-duplication will not
+catch them. Better overlap handling is a pending discussion with the user.
+
 ### 2026-09-09 — Instagram: pacing pauses were invisible
 
 Instagram has five sleeps; three were silent, producing 2–3 minute gaps per profile with nothing logged.
