@@ -817,8 +817,16 @@ Namespace API.Instagram
                             Dim jsonParsed As EContainer = JsonDocument.Parse(r, New ErrorsDescriber(EDP.ReturnValue))
                             If jsonParsed Is Nothing Then
                                 Dim scJson% = CInt(Responser.StatusCode)
+                                ' Include the start of the body: what Instagram actually sends decides the
+                                ' diagnosis and there is no other way to see it (the download client exposes
+                                ' no response headers). "<" means an HTML login/challenge wall, readable text
+                                ' means an API error payload, and unreadable bytes mean an undecoded
+                                ' content-encoding. Capped and flattened to one line to keep the log usable.
+                                Dim bodyPreview$ = r.Substring(0, Math.Min(r.Length, 200)).
+                                                     Replace(vbCr, " ").Replace(vbLf, " ").Replace(vbTab, " ")
                                 MyMainLOG = $"{ToStringForLog()}: Instagram — response was not JSON [{URL}]" &
-                                            $"{If(scJson <> 0, $" (HTTP {scJson})", String.Empty)}; section [{Section}] skipped."
+                                            $"{If(scJson <> 0, $" (HTTP {scJson})", String.Empty)}; section [{Section}] skipped." & vbCr &
+                                            $"    body: {r.Length} char(s), starts: {bodyPreview}"
                                 Throw New ExitException
                             End If
                             Using j As EContainer = jsonParsed
