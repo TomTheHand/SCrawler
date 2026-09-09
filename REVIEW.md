@@ -23,6 +23,46 @@ chunk-5 notes.
 - Git: `origin` = TomTheHand fork (push here), `upstream` = AAndyProgram.
 - Use the PowerShell tool for git/msbuild, not Bash.
 
+## Post-review fixes from live logs
+
+### 2026-09-08 — Instagram: a 200 with a bad body disabled the whole site
+
+`Log_20260908_234353.txt`: Instagram answered **HTTP 200** for one user with a body that was not JSON
+(literally `.`). `DownloadData`'s `JsonDocument.Parse(r)` had no `ErrorsDescriber`, so it threw;
+`DownloadingException` matched none of its status branches (200 is not 404/400/401/403/429/500/560/-1)
+and fell into the catch-all `Else` → `"Something is wrong. Your credentials may have expired [200/0]"`
+→ **`DisableSection`**, which writes the **persisted** site settings. That set
+DownloadTimeline/Reels/Stories/StoriesUser/Tagged to 0, and since
+`SiteSettings.ReadyToDownload` requires `DownloadTimeline`, the remaining 8 Instagram users in the batch
+were skipped too. Verified in `Responser_Instagram_Settings.xml` — all five were 0 while the `_Def`
+values still showed the user's intent (Timeline/Reels/Stories = 1).
+
+Fixes: parse with `EDP.ReturnValue` and, when the body is unusable, log URL + HTTP status and exit the
+section via `ExitException` (swallowed cleanly upstream, touches nothing); and a **2xx branch added
+ahead of the catch-all** in `DownloadingException` — a request that succeeded is never a credentials
+problem, so it logs, sets `HasError`, and returns without calling `DisableSection`. Genuine 400/401
+still disable, unchanged.
+
+**Lesson worth keeping: `DisableSection` mutates saved settings.** Any new branch that can reach it is
+a config-destroying branch, not just a logging one.
+
+### 2026-09-08 — RedGifs: no reactive token refresh
+
+Same log: 38 users plus 3 gif lookups all returned 401. `UpdateTokenIfRequired` only refreshes once
+`TokenUpdateInterval` minutes have elapsed, so a token RedGifs invalidates *early* leaves every request
+401ing for the whole run with nothing to trigger a refresh — and the absence of the
+"token refresh failed" log line proves refresh was never even attempted. Note the token is **anonymous**
+(`/v2/auth/temporary`, no credentials), and the `Token` property is `HiddenControl`, so there is no UI
+to refresh it by hand — it is meant to be automatic.
+
+New `SiteSettings.RefreshTokenAfterAuthFailure(WithinSeconds:=30)` refreshes on actual rejection,
+skipping the network call when another user refreshed within the window so a batch causes one refresh
+instead of one per user (the `_TokenUpdating` spin-wait is not a real lock — see the chunk-3 note —
+so the recency check is what actually prevents the stampede). Wired into `UserData.GetResponseRetryAuth`
+(user listing; handles the failure arriving as either an exception or an empty string) and into
+`GetDataFromUrlId` (also used by Reddit to resolve RedGifs links). **Exactly one retry per user per run**
+(`_TokenRetried`, reset in `DownloadDataF`) — a second 401 is a real failure and is logged as such.
+
 ## Upstream merges
 
 *(append per upstream release; the recipe below is the one that worked)*
