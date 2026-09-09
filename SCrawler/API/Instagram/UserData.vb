@@ -327,6 +327,8 @@ Namespace API.Instagram
                 Return $"{Section}_{ID}"
             End If
         End Function
+        ''' <summary>One saved copy of a non-JSON response body per program run (diagnostics only).</summary>
+        Private Shared _NonJsonBodyDumped As Boolean = False
         Private _DownloadingInProgress As Boolean = False
         Private _Limit As Integer = -1
         Private _TotalPostsParsed As Integer = 0
@@ -827,6 +829,18 @@ Namespace API.Instagram
                                 MyMainLOG = $"{ToStringForLog()}: Instagram — response was not JSON [{URL}]" &
                                             $"{If(scJson <> 0, $" (HTTP {scJson})", String.Empty)}; section [{Section}] skipped." & vbCr &
                                             $"    body: {r.Length} char(s), starts: {bodyPreview}"
+                                ' Save the first such body per program run so the page can actually be read:
+                                ' 200 characters cannot distinguish a logged-out wall from a rate-limit or
+                                ' checkpoint page, and they all arrive as HTTP 200 HTML. One file per run.
+                                If Not _NonJsonBodyDumped Then
+                                    _NonJsonBodyDumped = True
+                                    Try
+                                        Dim dumpFile As SFile = $"{My.Application.Info.DirectoryPath}\LOGs\InstagramResponse_{Now.ToString("yyyyMMdd_HHmmss")}.html"
+                                        TextSaver.SaveTextToFile(r, dumpFile,,, EDP.ReturnValue)
+                                        If dumpFile.Exists Then MyMainLOG = $"    full response saved to: {dumpFile}"
+                                    Catch
+                                    End Try
+                                End If
                                 Throw New ExitException
                             End If
                             Using j As EContainer = jsonParsed
