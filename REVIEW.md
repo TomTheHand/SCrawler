@@ -93,9 +93,29 @@ behaviour, so users with normal timeline history are untouched. Also added a dia
 section, the post a scan stopped on, and its position in the page — "item 1 of 12" means the scan
 covered nothing.
 
-**Open follow-up:** the timeline will now re-fetch posts that overlap reels already on disk. Videos are
-excluded from MD5 comparison (see the 2026-08-15 dedup entry), so the existing de-duplication will not
-catch them. Better overlap handling is a pending discussion with the user.
+Follow-up **RESOLVED** by `b445757` — see below.
+
+### 2026-09-09 — Instagram: de-duplicate media reached from two sections
+
+Consequence of the fix above: an unblocked timeline re-reaches posts whose reels are already on disk,
+and nothing caught it (`DownloadContentDefault`'s MD5 comparison covers only GIF/Picture — these are
+videos). `RemoveDuplicateMedia` drops newly parsed items duplicating either something already
+`Downloaded` or something parsed earlier in the same run.
+
+**Key is the CDN asset name, not `Post.ID`** (the user asked for Post.ID; this achieves the same goal
+without a known failure mode): a carousel's items all share one post ID, so post-level matching would
+discard the rest of a partially downloaded gallery. The asset name comes from the URL via
+`FilesPattern` — the same derivation `MediaFromData` uses to name the file — so it is stable even
+though the stored `File` carries a date prefix and the signed CDN URL expires. Validated empirically
+against a real `_Data.xml`: 36/36 records yielded a key, all distinct, no misses.
+
+Safety: runs in `DownloadDataF`'s **Finally** (sections routinely exit by throwing `ExitException`, so a
+Try-tail call would be skipped exactly when needed); never drops an item with a blank asset name; never
+drops a `Missing` record; only `UStates.Downloaded` (=2) counts as owned. Both skip counts are reported
+to the activity log.
+
+Generalizable: the same asset-name key would suit the Reddit/RedGifs collection dedupe (2026-08-15),
+which currently matches on gif ID and is likewise blocked from using MD5 on videos.
 
 ### 2026-09-09 — Instagram: pacing pauses were invisible
 
