@@ -46,6 +46,40 @@ still disable, unchanged.
 **Lesson worth keeping: `DisableSection` mutates saved settings.** Any new branch that can reach it is
 a config-destroying branch, not just a logging one.
 
+### 2026-09-09 — Instagram: the REST feed endpoint stopped returning JSON
+
+Follow-up to the entry above. Once a bad body no longer disabled the site, **every** Instagram user
+failed identically: HTTP 200 with 782 KB of HTML. Diagnosed by saving the body
+(`LOGs\InstagramResponse_*.html`, one per run) and reading it:
+
+- **Session valid** — the page contains the signed-in account's own `"username"`.
+- **No checkpoint/challenge** — every `challenge` hit was a CSS variable (`--challenge-width`) and every
+  `checkpoint` hit was in a generic URL routing table. Grepping for a marker is not enough; check context.
+- **Headers correct** — `x-ig-app-id`, `x-csrftoken`, `x-asbd-id`, `X-Requested-With: XMLHttpRequest`,
+  `sec-fetch-*`, `Accept: */*` all present (they live in `Responser_Instagram.xml` as `<Header Name=…>`
+  entries, NOT in `Responser_Instagram_Settings.xml`, which only stores the `_Checked` flags).
+- **Generic app shell** — `<title>Instagram</title>`, no reference to the profile requested, no login or
+  not-found page.
+
+Conclusion: `/api/v1/feed/user/{username}/username/` no longer serves JSON; unrecognized API routes fall
+through to the SPA. **Fix is a setting, not code: enable "Use GraphQL to download" (`USE_GQL`).** The
+upstream author posted the same advice on Discord independently. Consistent with SCrawler already
+defaulting `USE_GQL_UserData` and `USE_GQL_Highlights` to True — the main feed was the last REST holdout.
+
+### 2026-09-09 — Instagram: pacing pauses were invisible
+
+Instagram has five sleeps; three were silent, producing 2–3 minute gaps per profile with nothing logged.
+New `WaitLogged(ms, reason)` wraps them all: `RequestsWaitTimer_Any` (before every request, ~15 sites),
+`RequestsWaitTimer` (between requests) and the next-profile wait in `DownloadDataF.__firstWait` — the
+longest pause of a profile and previously entirely unlogged. Threshold-based (≥10 s gets an activity-log
+line, shorter ones update the status bar only) plus a per-profile total, so a long gap is fully accounted
+for without hundreds of lines per run.
+
+**Non-obvious trap worth remembering:** `SleepTimerRequestsNextProfile = -2` means "use max timer", and
+`SleepTimerRequestsNextProfileMax` returns
+`{RequestsWaitTimer_Any, RequestsWaitTimer, SleepTimerOnPostsLimit}.Max` — so raising the posts-limit
+timer silently lengthens the wait before *every* profile. The log line says so when -2 is in effect.
+
 ### 2026-09-08 — RedGifs: no reactive token refresh
 
 Same log: 38 users plus 3 gif lookups all returned 401. `UpdateTokenIfRequired` only refreshes once
