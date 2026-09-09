@@ -1120,7 +1120,15 @@ NextPageBlock:
                             End If
                             If skipPostFuncExists AndAlso DefaultParser_SkipPost.Invoke(Items, i, PostIDKV) Then
                             ElseIf Not DefaultParser_IgnorePass AndAlso PostKvExists(PostIDKV) Then
-                                If Not Section = Sections.Timeline OrElse Not Pinned Then Return False
+                                ' Returning False stops this section's pagination — the normal "caught up"
+                                ' path, and silent, which makes an early stop indistinguishable from
+                                ' genuinely having nothing new. Say where it stopped: hitting a known post
+                                ' at item 1 of a full page means the scan covered nothing.
+                                If Not Section = Sections.Timeline OrElse Not Pinned Then
+                                    DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: section [{Section}] stopped at " &
+                                                                    $"already-known post [{PostIDKV.ID}] (item {i + 1} of {Items.Count})")
+                                    Return False
+                                End If
                             Else
                                 _TempPostsList.Add(PostIDKV.ID)
                                 PostsKVIDs.ListAddValue(PostIDKV, LNC)
