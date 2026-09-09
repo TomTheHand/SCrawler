@@ -289,9 +289,22 @@ Namespace API.Instagram
                 If PostsKVIDs.FindIndex(Function(p) p.Section = Section AndAlso If(IsCode, p.Code = PostCodeId, p.ID = PostCodeId)) >= 0 Then
                     Return True
                 ElseIf Not IsCode Then
+                    Dim strippedId$ = PostCodeId.Replace($"_{ID}", String.Empty)
+                    Dim sameId As Predicate(Of PostKV) = Function(p) p.ID = PostCodeId OrElse p.ID = strippedId
+                    ' A hit in _TempPostsList cannot prove which SECTION the post was seen in:
+                    ' DefaultParser stores raw, unprefixed IDs for every section, and Timeline's own
+                    ' prefix from GetPostIdBySection is empty — so a post already downloaded as a Reel
+                    ' (reels also appear in the profile grid) reads as "already seen" for the Timeline
+                    ' too. DefaultParser then stops that section at its first item, so a profile whose
+                    ' reels were fetched before its timeline could never scan the timeline at all.
+                    ' PostsKVIDs *is* section-aware, so use it to reject the false positive — but only
+                    ' on positive evidence: the ID is recorded under another section and not under this
+                    ' one. Anything less certain keeps the original behaviour.
+                    If PostsKVIDs.Exists(Function(p) Not p.Section = Section AndAlso sameId(p)) AndAlso
+                       Not PostsKVIDs.Exists(Function(p) p.Section = Section AndAlso sameId(p)) Then Return False
                     Return _TempPostsList.Contains(GetPostIdBySection(PostCodeId, Section)) Or
-                           _TempPostsList.Contains(PostCodeId.Replace($"_{ID}", String.Empty)) Or
-                           _TempPostsList.Contains(GetPostIdBySection(PostCodeId.Replace($"_{ID}", String.Empty), Section))
+                           _TempPostsList.Contains(strippedId) Or
+                           _TempPostsList.Contains(GetPostIdBySection(strippedId, Section))
                 End If
             End If
             Return False
