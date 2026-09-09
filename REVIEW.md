@@ -114,8 +114,32 @@ Try-tail call would be skipped exactly when needed); never drops an item with a 
 drops a `Missing` record; only `UStates.Downloaded` (=2) counts as owned. Both skip counts are reported
 to the activity log.
 
-Generalizable: the same asset-name key would suit the Reddit/RedGifs collection dedupe (2026-08-15),
-which currently matches on gif ID and is likewise blocked from using MD5 on videos.
+### 2026-09-09 — de-duplication unified on one identity key (`d47ccdf`)
+
+Both paths derived "same media" separately (Instagram from an inline `FilesPattern` lambda;
+`CrossAccountDedup` from RedGifs gif IDs). Now one documented, overridable place:
+**`UserDataBase.MediaDedupKey`** — the media file name derived from its **URL**.
+
+Why the URL and not the obvious alternatives (all recorded on the member itself):
+- **not `UserMedia.File`** — a stored record's name carries a download-time date prefix
+  (`20260516_121822_AliveGraveZigzagsalamander.mp4`), so it never matches a freshly parsed item;
+- **not `Post.ID`** — every item of a gallery shares one, and on Reddit it is the *Reddit* post ID
+  (`t3_1tes3uu`) while the URL names the RedGifs asset;
+- **the extension stays in the key** — Instagram deliberately records one asset under two extensions
+  (`ValidateExtension`'s heic/jpg pair) and those must remain distinct.
+
+Instagram and RedGifs override it to use their own `FilesPattern`, because neither overrides
+`CreateFileFromUrl`. Reddit inherits the default (its `CreateFileFromUrl` already applies the pattern).
+**Note there are two `FilesPattern`s**: a global one in `MainMod` (`[^\./]+?\.\w+`, used by Reddit and
+RedGifs) and an Instagram-specific one that shadows it within that namespace. The global pattern matches
+twice on a normal URL (hostname, then filename) — `RParams.DM(…, 1, …)` selects the filename; verified
+against stored records rather than assumed.
+
+`CrossAccountDedup` now collects **both** identities a RedGifs item can be known by (gif ID *and* dedup
+key) and matches on either, so it gains coverage instead of trading one key for another.
+
+Validated on real data before deploying, since these paths delete/skip: Reddit and RedGifs derive the
+identical key form for the same gif, and Instagram produced a key for 36/36 stored records, all distinct.
 
 ### 2026-09-09 — Instagram: pacing pauses were invisible
 
