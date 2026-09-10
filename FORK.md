@@ -23,7 +23,22 @@ projects, and the remaining site modules.
   guaranteed-failure requests.
 - **Chronological file dates**: downloaded files get their Created/Modified timestamps set to the
   post's own date (from the site API), and content downloads oldest-post-first. Sort any download
-  folder by date and it reads in posting order.
+  folder by date and it reads in posting order. Times are written as UTC instants, so Windows shows
+  them in your local time and historical daylight-saving is handled correctly.
+- **De-duplication that works on video**: the built-in duplicate check only ever hashed images, so the
+  same video arriving twice was never caught. Media is now matched on a stable identity derived from
+  its URL, which catches a post reached from two different sections of the same profile (a reel also
+  appears in the profile grid) and, for accounts grouped in one collection, the same RedGifs video
+  arriving via both Reddit and RedGifs — keeping the RedGifs copy and recycling the duplicate.
+- **RedGifs account discovery**: Reddit posters often link videos from their own RedGifs account.
+  Those accounts are now spotted automatically (at no extra API cost — the creator is already in a
+  response SCrawler makes), collected in *Info → Discovered RedGifs accounts* with the evidence for
+  each, and can be added and grouped into a collection in one click.
+- **Automatic RedGifs token refresh**: the temporary token only refreshed on a timer, so a token
+  invalidated early left every request failing for the rest of the run. A rejected request now
+  refreshes once and retries.
+- **Visible pauses**: Instagram's rate-limit pacing could stall a run for minutes with nothing on
+  screen. Every wait now reports what it is waiting for and for how long, with a per-profile total.
 
 ## Fix highlights
 
@@ -46,6 +61,12 @@ The short version — see [REVIEW.md](REVIEW.md) and the commit history for the 
   other applications; unsynchronized cross-thread access to the shared feed data list.
 - **Main UI**: a stale selection silently dropped the whole user selection; removing a user could
   corrupt other users' icons in picture view; landscape thumbnails were stretched.
+- **Instagram**: a single malformed reply (an HTTP 200 carrying a web page instead of JSON) was read
+  as "your credentials expired" and switched off every Instagram download option in the saved
+  settings, skipping the rest of the batch; a post already downloaded as a reel made the profile
+  timeline look fully downloaded, so profiles whose reels were fetched first could never scan their
+  timeline at all; and a per-post lookup scanned whole lists repeatedly, turning a large profile's
+  catch-up into tens of minutes of pegged CPU.
 - Assorted correctness fixes in Reddit, RedGifs, Instagram, and TikTok parsing (wrong JSON node
   for TikTok repost dates, an Instagram width/height copy-paste, RedGifs post-ID corruption
   producing malformed API URLs, and more).
