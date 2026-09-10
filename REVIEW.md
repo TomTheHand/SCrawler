@@ -114,6 +114,33 @@ Try-tail call would be skipped exactly when needed); never drops an item with a 
 drops a `Missing` record; only `UStates.Downloaded` (=2) counts as owned. Both skip counts are reported
 to the activity log.
 
+### 2026-09-09 — file timestamps were UTC values written as local (`55c290c`)
+
+Every site parses its post date from a Unix timestamp, so `Post.Date` is **UTC** — confirmed by
+invoking `ADateTime.ParseUnix32` directly, which returns UTC with **`Kind = Unspecified`**. The
+`SetContentFileDate` helper then used `File.SetLastWriteTime`/`SetCreationTime`, which interpret an
+Unspecified value as **local**, so files were stamped 4–5 hours in the future — enough to push a
+late-evening post onto the following day, defeating the point of dating files by post.
+
+Fix: the **`...Utc` setters**. NTFS stores instants in UTC and Windows renders them local, so this is
+correct now, correct after a timezone change, and DST-correct per-date with no arithmetic in our code.
+Do **not** "convert to local" by hand — that reintroduces the DST problem and is timezone-fragile.
+
+Design agreed with the user: the **filename prefix keeps the server's UTC instant** (provenance) while
+the **file timestamp is that same instant rendered locally** (presentation). They are not inconsistent;
+they are one moment shown two ways.
+
+**Library migration (one-off, done 2026-09-09).** Script:
+`scratchpad\Fix-SCrawlerFileDates.ps1`; reversal log preserved at
+`D:\Utilities\SCrawler-filedates-backup\SCrawlerFileDates_*.csv` (77,446 rows with the previous
+timestamps). Scanned **`D:\pr0n`, not just `SCrawler downloads`** — 8 of the 234 user data files sit in
+folders left behind by deleted users. Built a global filename index (200,143 files) and preferred a
+match inside the record's own user folder, falling back to a single unambiguous match anywhere; that
+recovered **1,489 files** sitting at collection roots that a per-user search missed, with zero
+ambiguous cases. Result: 77,446 files re-stamped, 0 errors; 41,911 records had no file on disk (the
+user deletes duplicates deliberately). Only file metadata was touched — no contents, no XML — so the
+XML remains the canonical UTC record and the whole thing stays re-derivable.
+
 ### 2026-09-09 — de-duplication unified on one identity key (`d47ccdf`)
 
 Both paths derived "same media" separately (Instagram from an inline `FilesPattern` lambda;
