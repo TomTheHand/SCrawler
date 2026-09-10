@@ -11,9 +11,11 @@ projects, and the remaining site modules.
 
 ## New features
 
-- **Activity log window** (Info menu → *Activity log*): a live, rolling feed of what the program
-  is doing right now — job start/finish, per-user "download starting / completed — N new file(s)",
-  per-file progress, and skip/failure reasons that were previously silent.
+- **Activity log** (Info menu → *Activity log*): a live feed of what the program is doing right now —
+  job start/finish, per-user "download starting / completed — N new file(s)", per-file progress,
+  rate-limit pauses, and skip/failure reasons that were previously silent. Every line is also written
+  to `LOGs\Activity_<timestamp>.txt` (last 10 runs kept), so a run can still be examined after it has
+  finished — or after a hang.
 - **Instagram "Download missing posts" support**: Instagram had no missing-post recovery at all
   (the menu action silently did nothing for Instagram users). Missing posts are now re-fetched
   individually with fresh media URLs, with a 10-attempt give-up budget and immediate cleanup of
