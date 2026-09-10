@@ -2084,8 +2084,15 @@ stxt:
                     Dim d As Date = PostDate.Value
                     ' FILETIME/NTFS cannot represent dates before 1601 — guard a garbage-parsed value.
                     If d.Year > 1601 Then
-                        System.IO.File.SetCreationTime(f, d)
-                        System.IO.File.SetLastWriteTime(f, d)
+                        ' The ...Utc setters, deliberately: every site parses its post date from a Unix
+                        ' timestamp (UnixDate32Provider), so Post.Date is UTC — but it arrives as a naive
+                        ' DateTime with Kind=Unspecified, and the non-Utc setters treat that as LOCAL.
+                        ' That stored the wrong instant and showed files hours in the future.
+                        ' NTFS stores instants in UTC and Windows renders them in local time, so handing it
+                        ' the UTC value directly is both correct now and correct after a timezone change,
+                        ' and gets historical DST right per-date without any arithmetic here.
+                        System.IO.File.SetCreationTimeUtc(f, d)
+                        System.IO.File.SetLastWriteTimeUtc(f, d)
                     End If
                 End If
             Catch
