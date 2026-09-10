@@ -284,30 +284,69 @@ Namespace API.Instagram
         Protected Overloads Function PostKvExists(ByVal pkv As PostKV) As Boolean
             Return PostKvExists(pkv.ID, False, pkv.Section) OrElse PostKvExists(pkv.Code, True, pkv.Section)
         End Function
+        Private Shared ReadOnly AllSections() As Sections = DirectCast([Enum].GetValues(GetType(Sections)), Sections())
+#Region "PostKvExists lookups"
+        ' This runs for EVERY parsed post, and used to scan PostsKVIDs and _TempPostsList linearly each
+        ' time — O(n) per check over lists that grow to thousands, i.e. O(n²) across a full scan. On a
+        ' profile with ~3.4k records that turned a paced timeline catch-up into tens of minutes of pegged
+        ' CPU. These mirror the two lists as hash sets for O(1) membership.
+        '
+        ' Both lists only ever APPEND during a run, so they are synced incrementally from the last known
+        ' count (amortised O(1) per added item) rather than rebuilt — rebuilding on each add would just
+        ' restore the O(n²). A shrink means something replaced the list wholesale, so the set is rebuilt.
+        ' Ordinal (case-sensitive) to match the original comparisons exactly: shortcodes are case-sensitive.
+        Private ReadOnly KvKeys As New HashSet(Of String)(StringComparer.Ordinal)
+        Private ReadOnly PostsSet As New HashSet(Of String)(StringComparer.Ordinal)
+        Private KvSynced As Integer = 0
+        Private PostsSynced As Integer = 0
+        Private Function KvKey(ByVal Section As Sections, ByVal IsCode As Boolean, ByVal Value As String) As String
+            Return $"{CInt(Section)}|{IIf(IsCode, "C", "I")}|{Value}"
+        End Function
+        Private Sub SyncKvLookups()
+            If PostsKVIDs.Count < KvSynced Then KvKeys.Clear() : KvSynced = 0
+            While KvSynced < PostsKVIDs.Count
+                With PostsKVIDs(KvSynced)
+                    If Not .ID.IsEmptyString Then KvKeys.Add(KvKey(.Section, False, .ID))
+                    If Not .Code.IsEmptyString Then KvKeys.Add(KvKey(.Section, True, .Code))
+                End With
+                KvSynced += 1
+            End While
+            If _TempPostsList.Count < PostsSynced Then PostsSet.Clear() : PostsSynced = 0
+            While PostsSynced < _TempPostsList.Count
+                PostsSet.Add(_TempPostsList(PostsSynced))
+                PostsSynced += 1
+            End While
+        End Sub
+#End Region
         Private Overloads Function PostKvExists(ByVal PostCodeId As String, ByVal IsCode As Boolean, ByVal Section As Sections) As Boolean
-            If Not PostCodeId.IsEmptyString And PostsKVIDs.Count > 0 Then
-                If PostsKVIDs.FindIndex(Function(p) p.Section = Section AndAlso If(IsCode, p.Code = PostCodeId, p.ID = PostCodeId)) >= 0 Then
-                    Return True
-                ElseIf Not IsCode Then
-                    Dim strippedId$ = PostCodeId.Replace($"_{ID}", String.Empty)
-                    Dim sameId As Predicate(Of PostKV) = Function(p) p.ID = PostCodeId OrElse p.ID = strippedId
-                    ' A hit in _TempPostsList cannot prove which SECTION the post was seen in:
-                    ' DefaultParser stores raw, unprefixed IDs for every section, and Timeline's own
-                    ' prefix from GetPostIdBySection is empty — so a post already downloaded as a Reel
-                    ' (reels also appear in the profile grid) reads as "already seen" for the Timeline
-                    ' too. DefaultParser then stops that section at its first item, so a profile whose
-                    ' reels were fetched before its timeline could never scan the timeline at all.
-                    ' PostsKVIDs *is* section-aware, so use it to reject the false positive — but only
-                    ' on positive evidence: the ID is recorded under another section and not under this
-                    ' one. Anything less certain keeps the original behaviour.
-                    If PostsKVIDs.Exists(Function(p) Not p.Section = Section AndAlso sameId(p)) AndAlso
-                       Not PostsKVIDs.Exists(Function(p) p.Section = Section AndAlso sameId(p)) Then Return False
-                    Return _TempPostsList.Contains(GetPostIdBySection(PostCodeId, Section)) Or
-                           _TempPostsList.Contains(strippedId) Or
-                           _TempPostsList.Contains(GetPostIdBySection(strippedId, Section))
-                End If
+            ' Guard kept exactly as it was: with no KV data at all, nothing is treated as seen — the
+            ' _TempPostsList fallback below is deliberately NOT consulted in that case.
+            If PostCodeId.IsEmptyString OrElse PostsKVIDs.Count = 0 Then Return False
+            SyncKvLookups()
+            ' Exact (section + id/code) match.
+            If KvKeys.Contains(KvKey(Section, IsCode, PostCodeId)) Then Return True
+            If IsCode Then Return False
+
+            Dim strippedId$ = PostCodeId.Replace($"_{ID}", String.Empty)
+            ' A hit in _TempPostsList cannot prove which SECTION the post was seen in: DefaultParser
+            ' stores raw, unprefixed IDs for every section, and Timeline's own prefix from
+            ' GetPostIdBySection is empty — so a post already downloaded as a Reel (reels also appear in
+            ' the profile grid) reads as "already seen" for the Timeline too. DefaultParser then stops
+            ' that section at its first item, so a profile whose reels were fetched before its timeline
+            ' could never scan the timeline at all. PostsKVIDs *is* section-aware, so use it to reject the
+            ' false positive — but only on positive evidence: the ID is recorded under another section and
+            ' not under this one. Anything less certain keeps the original behaviour.
+            Dim inThisSection As Boolean = KvKeys.Contains(KvKey(Section, False, PostCodeId)) OrElse
+                                           KvKeys.Contains(KvKey(Section, False, strippedId))
+            If Not inThisSection Then
+                For Each sec As Sections In AllSections
+                    If Not sec = Section AndAlso (KvKeys.Contains(KvKey(sec, False, PostCodeId)) OrElse
+                                                  KvKeys.Contains(KvKey(sec, False, strippedId))) Then Return False
+                Next
             End If
-            Return False
+            Return PostsSet.Contains(GetPostIdBySection(PostCodeId, Section)) OrElse
+                   PostsSet.Contains(strippedId) OrElse
+                   PostsSet.Contains(GetPostIdBySection(strippedId, Section))
         End Function
         Friend Function GetPostCodeById(ByVal PostID As String) As String
             Try
@@ -1186,6 +1225,11 @@ NextPageBlock:
                     End Select
                 End If
                 ProgressPre.ChangeMax(Items.Count)
+                ' One line per page. A section catching up on history can walk hundreds of pages, and the
+                ' per-request pacing waits (~7s) sit below the activity log's duration threshold, so
+                ' without this a long scan is completely silent and looks like a freeze.
+                DownloadObjects.ActivityLog.Add($"[{Site}] {Name}: [{Section}] scanning page of {Items.Count} post(s) " &
+                                                $"({_TotalPostsParsed} parsed so far)")
                 For i = 0 To Items.Count - 1
                     nn = Items(i)
                     ProgressPre.Perform()
