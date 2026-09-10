@@ -210,6 +210,7 @@ CloseResume:
     End Sub
     Private _DisableClosingScript As Boolean = False
     Private Sub MainFrame_Disposed(sender As Object, e As EventArgs) Handles Me.Disposed
+        DownloadObjects.ActivityLog.CloseFile()
         If Not _DisableClosingScript Then ExecuteCommand(Settings.ClosingCommand)
         If Not MyMainLOG.IsEmptyString Then SaveLogToFile()
     End Sub

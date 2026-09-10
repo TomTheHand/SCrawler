@@ -44,8 +44,14 @@ Namespace DownloadObjects
                                            ActivityLog.Clear()
                                            LIST_LOG.Items.Clear()
                                        End Sub
+            ' Every line is also written to LOGs\Activity_*.txt; this reveals where, since the whole point
+            ' of the file is being readable after the run (or the hang) that produced it.
+            Dim bttFile As New ToolStripButton("Show log file") With {
+                .ToolTipText = "Open this run's activity log file in Explorer. It keeps everything, including entries older than this window shows."}
+            AddHandler bttFile.Click, Sub() ShowLogFile()
             Dim tBar As New ToolStrip With {.GripStyle = ToolStripGripStyle.Hidden}
-            tBar.Items.AddRange(New ToolStripItem() {BTT_AUTOSCROLL, New ToolStripSeparator, bttCopy, bttClear})
+            tBar.Items.AddRange(New ToolStripItem() {BTT_AUTOSCROLL, New ToolStripSeparator, bttCopy, bttClear,
+                                                     New ToolStripSeparator, bttFile})
 
             Controls.Add(LIST_LOG)
             Controls.Add(tBar)
@@ -113,6 +119,18 @@ Namespace DownloadObjects
                     If BTT_AUTOSCROLL.Checked Then .TopIndex = .Items.Count - 1
                 End With
             Catch
+            End Try
+        End Sub
+        Private Sub ShowLogFile()
+            Try
+                Dim f$ = ActivityLog.LogFile
+                If f.IsEmptyString OrElse Not IO.File.Exists(f) Then
+                    MsgBoxE({"No activity log file for this run yet — it is created with the first entry.", Text}, vbExclamation)
+                Else
+                    Process.Start("explorer.exe", $"/select,""{f}""")
+                End If
+            Catch ex As Exception
+                ErrorsDescriber.Execute(EDP.SendToLog, ex, "ActivityLogForm.ShowLogFile")
             End Try
         End Sub
         Private Sub CopyEntries()
