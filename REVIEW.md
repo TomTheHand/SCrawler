@@ -722,7 +722,20 @@ Pre-ledger work (earlier sessions, already committed to fork):
 *(one half of a cross-module interaction seen; verify when the other half is read)*
 
 - ~~`DownloadMissingOnly`/`UserExists` audit~~ **RESOLVED (chunk 4)**: Reddit + Redgifs carry the probe; TikTok can't (no UserExists mechanism — attempts budget bounds it instead); Instagram is moot (no ReparseMissing override at all — see chunk 4 notes; possible user-approved feature).
-- ~~The ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter/Reddit/Redgifs) each hand-roll the existence-probe pattern; a shared base hook remains a chunk-6 refactor option, but no NEW site needed the probe in chunk 4, so pressure is low.~~ **RESOLVED (chunk 6): won't-do** — see chunk-6 section. *(No Open Suspicions remain.)*
+- ~~The ReparseMissing fixes (Mastodon/OnlyFans/ThreadsNet/Twitter/Reddit/Redgifs) each hand-roll the existence-probe pattern; a shared base hook remains a chunk-6 refactor option, but no NEW site needed the probe in chunk 4, so pressure is low.~~ **RESOLVED (chunk 6): won't-do** — see chunk-6 section.
+- **OPEN (2026-09-09): date limits compare a UTC post date against a locally-entered date.**
+  `UserDataBase.CheckDatesLimit` converts the post date with the site's provider and compares it to
+  `DownloadDateFrom`/`DownloadDateTo`, which the user types as local dates. For the unix-based sites the
+  parsed value is UTC, so the boundary is off by the UTC offset (4–5h here): a post made at 21:00 local
+  on Aug 31 counts as Sep 1. Now more visible than it was, because file timestamps render locally while
+  this filter still thinks in UTC — the same post can show Aug 31 in Explorer and be filtered as Sep 1.
+  **Not a one-line fix:** the call sites pass a mix of providers — `UnixDate32Provider` (Reddit,
+  RedGifs, Instagram), `SimpleDateConverter` (TikTok), site-specific `DateProvider` (Twitter, Bluesky,
+  Mastodon, OnlyFans), and `Nothing` with an already-parsed `Post.Date` (Pinterest, ThisVid, Xhamster,
+  JustForFans). Converting unconditionally would corrupt any site whose date is not UTC, and the
+  provider argument does not reliably identify which is which (the `Nothing` callers pass dates that
+  *were* parsed from unix). Needs a per-site audit, so it is parked rather than guessed at. Impact is
+  limited to the boundary hours of date-limited downloads.
 - ~~Chunk 5: check whether Feed code compensates for the old broken `UserMedia.New(EContainer)` path reconstruction (fixed in 53ca6a5)~~ **RESOLVED (chunk 5): no double-correction** — the only compensation is `FeedMedia.FileCheckSpecialFolders`, gated by `If Not File.Exists`: when the 53ca6a5 reconstruction is right it never runs; when the file is genuinely missing, appending another folder still yields a nonexistent path and the tile is discarded exactly as before. Harmless legacy fallback for pre-fix session XMLs; left in place.
 
 ## PersonalUtilities Hazards (closed-source, work around only)
