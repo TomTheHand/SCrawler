@@ -31,6 +31,8 @@ Namespace DownloadObjects
         Private WithEvents MyPicture As PictureBox
         Private ReadOnly MyImage As ImageRenderer
         Private ReadOnly MyVideo As FeedVideo
+        ''' <summary>Context-menu entries listing the special feeds (only when <c>FeedShowSpecialFeedsMediaItem</c> is on).</summary>
+        Private SpecialFeedMenus As DownloadFeedForm.FeedMenus = Nothing
         Friend ReadOnly Property Exists As Boolean
             Get
                 Return Not MyPicture Is Nothing Or Not MyVideo Is Nothing
@@ -369,16 +371,19 @@ Namespace DownloadObjects
 
                 If Settings.Feeds.FavoriteExists AndAlso Settings.Feeds.Favorite.Contains(Media) Then BTT_FEED_ADD_FAV.ControlChangeColor(True, False)
                 If Settings.FeedShowSpecialFeedsMediaItem Then
+                    ' No icons on these items: one menu per tile, and each My.Resources access decodes a
+                    ' fresh 512px bitmap. (A feed created mid-session used to get icons anyway; the shared
+                    ' registration keeps both paths the same.)
+                    SpecialFeedMenus = New DownloadFeedForm.FeedMenus(CONTEXT_DATA)
+                    SpecialFeedMenus.Register(BTT_FEED_ADD_SPEC, AddressOf Feed_SPEC_ADD)
+                    SpecialFeedMenus.Register(BTT_FEED_ADD_SPEC_REMOVE, AddressOf Feed_SPEC_ADD_REMOVE)
+                    SpecialFeedMenus.Register(BTT_FEED_REMOVE_SPEC, AddressOf Feed_SPEC_REMOVE)
                     With Settings.Feeds
                         AddHandler .FeedAdded, AddressOf Feed_FeedAdded
                         AddHandler .FeedRemoved, AddressOf Feed_FeedRemoved
                         If .Count > 0 Then
                             For Each fItem As FeedSpecial In .Self
-                                If Not fItem.IsFavorite Then
-                                    DownloadFeedForm.AddNewFeedItem(BTT_FEED_ADD_SPEC, CONTEXT_DATA, fItem, Nothing, AddressOf Feed_SPEC_ADD)
-                                    DownloadFeedForm.AddNewFeedItem(BTT_FEED_ADD_SPEC_REMOVE, CONTEXT_DATA, fItem, Nothing, AddressOf Feed_SPEC_ADD_REMOVE)
-                                    DownloadFeedForm.AddNewFeedItem(BTT_FEED_REMOVE_SPEC, CONTEXT_DATA, fItem, Nothing, AddressOf Feed_SPEC_REMOVE)
-                                End If
+                                If Not fItem.IsFavorite Then SpecialFeedMenus.AddFeed(fItem)
                             Next
                         End If
                     End With
@@ -395,14 +400,10 @@ Namespace DownloadObjects
 #End Region
 #Region "Feed handlers"
         Private Sub Feed_FeedAdded(ByVal Source As FeedSpecialCollection, ByVal Feed As FeedSpecial)
-            DownloadFeedForm.AddNewFeedItem(BTT_FEED_ADD_SPEC, CONTEXT_DATA, Feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD, True)
-            DownloadFeedForm.AddNewFeedItem(BTT_FEED_ADD_SPEC_REMOVE, CONTEXT_DATA, Feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD_REMOVE, True)
-            DownloadFeedForm.AddNewFeedItem(BTT_FEED_REMOVE_SPEC, CONTEXT_DATA, Feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_REMOVE, True)
+            SpecialFeedMenus?.AddFeed(Feed, True)
         End Sub
         Private Sub Feed_FeedRemoved(ByVal Source As FeedSpecialCollection, ByVal Feed As FeedSpecial)
-            DownloadFeedForm.Feed_FeedRemoved(BTT_FEED_ADD_SPEC, CONTEXT_DATA, Feed)
-            DownloadFeedForm.Feed_FeedRemoved(BTT_FEED_ADD_SPEC_REMOVE, CONTEXT_DATA, Feed)
-            DownloadFeedForm.Feed_FeedRemoved(BTT_FEED_REMOVE_SPEC, CONTEXT_DATA, Feed)
+            SpecialFeedMenus?.RemoveFeed(Feed)
         End Sub
         Private Sub Feed_SPEC_ADD(ByVal Source As ToolStripMenuItem, ByVal e As EventArgs)
             Feed_SPEC_ADD_Impl(Source)

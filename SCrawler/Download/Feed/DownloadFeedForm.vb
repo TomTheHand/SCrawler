@@ -38,6 +38,8 @@ Namespace DownloadObjects
         Private WithEvents BTT_LOAD_CURRENT_T As ToolStripButton
         Private WithEvents BTT_LOAD_FAV_T As ToolStripButton
         Private WithEvents BTT_LOAD_T As ToolStripDropDownButton
+        ''' <summary>Every menu listing the special feeds; see <see cref="FeedMenus"/>.</summary>
+        Private ReadOnly SpecialFeedMenus As FeedMenus
 #End Region
         Private DataRows As Integer = 10
         Private DataColumns As Integer = 1
@@ -253,6 +255,19 @@ Namespace DownloadObjects
             BTT_FILTER.Image = My.Resources.FilterPic
             BTT_FILTER_SIMPLE.Image = My.Resources.FilterPic
             BTT_FILTER_SAVE.Image = PersonalUtilities.My.Resources.SaveAsPic_Black_16
+
+            SpecialFeedMenus = New FeedMenus(ToolbarTOP)
+            With SpecialFeedMenus
+                Dim rss As Func(Of Image) = Function() My.Resources.RSSPic_512
+                .Register(BTT_LOAD_SPEC, AddressOf Feed_SPEC_LOAD, rss)
+                .Register(BTT_LOAD_T, AddressOf Feed_SPEC_LOAD, rss)
+                .Register(BTT_FEED_ADD_SPEC, AddressOf Feed_SPEC_ADD, rss)
+                .Register(BTT_FEED_ADD_T, AddressOf Feed_SPEC_ADD, rss)
+                .Register(BTT_FEED_ADD_SPEC_REMOVE, AddressOf Feed_SPEC_ADD_REMOVE, rss)
+                .Register(BTT_FEED_REMOVE_SPEC, AddressOf Feed_SPEC_REMOVE, rss)
+                .Register(BTT_FEED_DELETE_SPEC, AddressOf Feed_SPEC_DELETE, Function() My.Resources.DeletePic_24)
+                .Register(BTT_FEED_CLEAR_SPEC, AddressOf Feed_SPEC_CLEAR, Function() My.Resources.BrushToolPic_16)
+            End With
         End Sub
 #End Region
 #Region "Form handlers"
@@ -292,16 +307,7 @@ Namespace DownloadObjects
                         End If
                         If .Count > 0 Then
                             For Each feed As FeedSpecial In .Self
-                                If Not feed.IsFavorite Then
-                                    AddNewFeedItem(BTT_LOAD_SPEC, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_LOAD)
-                                    AddNewFeedItem(BTT_LOAD_T, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_LOAD)
-                                    AddNewFeedItem(BTT_FEED_ADD_SPEC, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD)
-                                    AddNewFeedItem(BTT_FEED_ADD_T, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD)
-                                    AddNewFeedItem(BTT_FEED_ADD_SPEC_REMOVE, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD_REMOVE)
-                                    AddNewFeedItem(BTT_FEED_REMOVE_SPEC, feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_REMOVE)
-                                    AddNewFeedItem(BTT_FEED_DELETE_SPEC, feed, My.Resources.DeletePic_24, AddressOf Feed_SPEC_DELETE)
-                                    AddNewFeedItem(BTT_FEED_CLEAR_SPEC, feed, My.Resources.BrushToolPic_16, AddressOf Feed_SPEC_CLEAR)
-                                End If
+                                If Not feed.IsFavorite Then SpecialFeedMenus.AddFeed(feed)
                             Next
                         End If
                     End With
@@ -365,10 +371,46 @@ Namespace DownloadObjects
         End Sub
 #End Region
 #Region "Feeds handlers"
-        Private Overloads Sub AddNewFeedItem(Of T As ToolStripDropDownItem)(ByVal Destination As T, ByVal Feed As FeedSpecial, ByVal Image As Image,
-                                                                            ByVal Handler As EventHandler, Optional ByVal Insert As Boolean = False)
-            AddNewFeedItem(Destination, ToolbarTOP, Feed, Image, Handler, Insert)
-        End Sub
+        ''' <summary>
+        ''' The menus that list the special feeds, each registered once with the handler and icon its
+        ''' items get. Loading, adding and removing a feed all walk this one list. They used to be
+        ''' separate hand-kept copies of it, and a menu missing from one copy left a stale item behind
+        ''' after its feed was deleted: "add and remove from current" (fixed here in 2026-07), then the
+        ''' toolbar's Load button (fixed upstream in 2026.9.21.0).
+        ''' </summary>
+        Friend NotInheritable Class FeedMenus
+            Private Class Entry
+                Friend Destination As ToolStripDropDownItem
+                Friend Handler As EventHandler
+                Friend Image As Func(Of Image)
+            End Class
+            Private ReadOnly Owner As ToolStrip
+            Private ReadOnly Entries As New List(Of Entry)
+            ''' <param name="Owner">The strip hosting the menus; used to marshal changes to its UI thread.</param>
+            Friend Sub New(ByVal Owner As ToolStrip)
+                Me.Owner = Owner
+            End Sub
+            ''' <param name="Image">
+            ''' Produces the icon for each new item, or Nothing for none. A factory rather than one shared
+            ''' Image: every item gets its own instance, as before, so disposing one item can never pull the
+            ''' picture out from under the others.
+            ''' </param>
+            Friend Sub Register(ByVal Destination As ToolStripDropDownItem, ByVal Handler As EventHandler,
+                                Optional ByVal Image As Func(Of Image) = Nothing)
+                Entries.Add(New Entry With {.Destination = Destination, .Handler = Handler, .Image = Image})
+            End Sub
+            ''' <summary>Adds an item for <paramref name="Feed"/> to every registered menu.</summary>
+            ''' <param name="Insert">Put the item first (a feed created now) rather than last (loading).</param>
+            Friend Sub AddFeed(ByVal Feed As FeedSpecial, Optional ByVal Insert As Boolean = False)
+                For Each e As Entry In Entries
+                    AddNewFeedItem(e.Destination, Owner, Feed, If(e.Image Is Nothing, Nothing, e.Image()), e.Handler, Insert)
+                Next
+            End Sub
+            ''' <summary>Removes <paramref name="Feed"/>'s item from every registered menu.</summary>
+            Friend Sub RemoveFeed(ByVal Feed As FeedSpecial)
+                For Each e As Entry In Entries : Feed_FeedRemoved(e.Destination, Owner, Feed) : Next
+            End Sub
+        End Class
         Friend Overloads Shared Function AddNewFeedItem(ByVal Destination As ToolStripDropDownItem, ByVal Toolbar As ToolStrip,
                                                         ByVal Feed As FeedSpecial, ByVal Image As Image,
                                                         ByVal Handler As EventHandler, Optional ByVal Insert As Boolean = False) As ToolStripMenuItem
@@ -384,27 +426,10 @@ Namespace DownloadObjects
             Return item
         End Function
         Private Sub Feed_FeedAdded(ByVal Source As FeedSpecialCollection, ByVal Feed As FeedSpecial)
-            AddNewFeedItem(BTT_LOAD_SPEC, Feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_LOAD, True)
-            AddNewFeedItem(BTT_LOAD_T, Feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_LOAD, True)
-            AddNewFeedItem(BTT_FEED_ADD_SPEC, Feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD, True)
-            AddNewFeedItem(BTT_FEED_ADD_T, Feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD, True)
-            AddNewFeedItem(BTT_FEED_ADD_SPEC_REMOVE, Feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_ADD_REMOVE, True)
-            AddNewFeedItem(BTT_FEED_REMOVE_SPEC, Feed, My.Resources.RSSPic_512, AddressOf Feed_SPEC_REMOVE, True)
-            AddNewFeedItem(BTT_FEED_DELETE_SPEC, Feed, My.Resources.DeletePic_24, AddressOf Feed_SPEC_DELETE, True)
-            AddNewFeedItem(BTT_FEED_CLEAR_SPEC, Feed, My.Resources.BrushToolPic_16, AddressOf Feed_SPEC_CLEAR, True)
+            SpecialFeedMenus.AddFeed(Feed, True)
         End Sub
         Private Overloads Sub Feed_FeedRemoved(ByVal Source As FeedSpecialCollection, ByVal Feed As FeedSpecial)
-            Feed_FeedRemoved(BTT_LOAD_SPEC, Feed)
-            Feed_FeedRemoved(BTT_LOAD_T, Feed)
-            Feed_FeedRemoved(BTT_FEED_ADD_SPEC, Feed)
-            Feed_FeedRemoved(BTT_FEED_ADD_T, Feed)
-            Feed_FeedRemoved(BTT_FEED_ADD_SPEC_REMOVE, Feed)
-            Feed_FeedRemoved(BTT_FEED_REMOVE_SPEC, Feed)
-            Feed_FeedRemoved(BTT_FEED_DELETE_SPEC, Feed)
-            Feed_FeedRemoved(BTT_FEED_CLEAR_SPEC, Feed)
-        End Sub
-        Private Overloads Sub Feed_FeedRemoved(ByVal Destination As ToolStripDropDownItem, ByVal Feed As FeedSpecial)
-            Feed_FeedRemoved(Destination, ToolbarTOP, Feed)
+            SpecialFeedMenus.RemoveFeed(Feed)
         End Sub
         Friend Overloads Shared Sub Feed_FeedRemoved(ByVal Destination As ToolStripDropDownItem, ByVal Toolbar As ToolStrip, ByVal Feed As FeedSpecial)
             Try
