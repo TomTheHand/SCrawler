@@ -233,6 +233,52 @@ Resolved one of our own chunk-5 notes: upstream fixed the `FeedFilter.Sites` qui
 filters feed data via `DataFilterPredicate`, not just the picker). Also gained Feed label-based filter
 search and Current/Favorite/Load toolbar buttons.
 
+### 2026.9.21.0 — merged 2026-09-28 (commit `540fdd4`)
+
+48 files, +1455/−1324. Overlap with ours was 10 files; three conflicted, all mechanical:
+
+- **`TDownloader.vb`** — upstream added a `MissingPostsUsers` list (the new *Add 'missing' users to log*
+  setting) right where our `FeedDataLock` accessors sit, and rewrote the end-of-run block that holds our
+  locked `Files.Sort()`. Kept both. The new list is appended from the parallel job threads, so that `Add`
+  now happens under `FeedDataLock` like every other shared list in the class.
+- **`API/Mastodon/UserData.vb`** — modify/delete: upstream removed Mastodon support, we had edited the
+  file (Bug 13's existence pre-check). Took the deletion. The running install has no Mastodon users.
+- **`README.md`** — kept the fork notice.
+
+Behavior changes worth knowing:
+
+- **Instagram:** `USE_GQL` now defaults on, is hidden from the UI, and a settings-version-4 migration forces
+  it on — the same fix we applied by hand on 2026-09-09. Instagram's `UserData.vb` was not touched, so none
+  of our Instagram work was in play.
+- **Reddit:** upstream removed its shared OAuth app credentials; installs *without* credentials now use
+  `www.reddit.com/user/<name>/.json` with cookies. This install has its own credentials, so it stays on the
+  OAuth path unchanged.
+- **Imgur removed** (`CreateImgurMedia` is gone from `ParseContainer`). Direct `i.imgur.com/<id>.jpg/.png`
+  links are still caught by our original-source-URL fallback (Bug 12); album or page links fall through
+  to Reddit's preview image; `.gifv` links would now fetch Imgur's HTML player page, since the `.gifv` →
+  `.mp4` rewrite went with the removed code. Left alone because Imgur has all but vanished from this
+  library's feeds: 129 Imgur items across 145 Reddit users, 128 of them from 2019–2023 and **one** since
+  2024.
+- Upstream fixed the same "adjacent list omitted" pattern we found in chunk 5, this time for Feed's
+  `BTT_LOAD_T` menu in the `Feed_FeedAdded`/`Feed_FeedRemoved` fan-outs.
+
+**Regression fixed on merge (commit `d8d36f0`):** Reddit `DownloadGallery` gained an inner gif/mp4 loop for
+`AnimatedImage` items, which moved `If FirstOnly Then Exit For` inside it. It now leaves only the inner
+loop, so cache mode (`FirstOnly` = `SaveToCache`) took an item from *every* gallery entry. Added the
+matching outer exit.
+
+**Noted, not acted on:**
+- The same gallery code adds **both** the `.gif` and the `.mp4` of every animated gallery item, so the
+  same animation lands on disk twice under two extensions. Raised with the user as a keep-which question.
+- Twitter saved posts now fetch `https://x.com/i/history` instead of `/i/bookmarks`. Out of our review
+  scope, and it may be deliberate, but it reads like a leftover.
+
+**`lib/`:** the merged tree compiled against the *old* DLLs this time, so compilation is not a signal
+either way. **Check by content instead:** the release zip's central directory (the last ~64 KiB) lists
+every entry's CRC-32, so two HTTP Range requests compare the remote DLLs against `lib/` without
+downloading 360 MB. For this release all three differed (`PersonalUtilities.dll` grew 4 KB). The same
+Range trick extracts just the three DLLs (~2.3 MB, CRC-verified).
+
 ## Reddit ↔ RedGifs cross-account work (user feature, 2026-08-15)
 
 Motivation: Reddit posters frequently link videos from their own RedGifs account. The user adds both
