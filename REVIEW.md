@@ -262,22 +262,39 @@ Behavior changes worth knowing:
 - Upstream fixed the same "adjacent list omitted" pattern we found in chunk 5, this time for Feed's
   `BTT_LOAD_T` menu in the `Feed_FeedAdded`/`Feed_FeedRemoved` fan-outs.
 
-**Regression fixed on merge (commit `d8d36f0`):** Reddit `DownloadGallery` gained an inner gif/mp4 loop for
-`AnimatedImage` items, which moved `If FirstOnly Then Exit For` inside it. It now leaves only the inner
-loop, so cache mode (`FirstOnly` = `SaveToCache`) took an item from *every* gallery entry. Added the
-matching outer exit.
+**Reddit animated gallery items: GIF only (commit `a53c550`, user's choice).** Upstream's new
+`AnimatedImage` support in `DownloadGallery` saved **both** variants Reddit offers — `s.gif` (normally the
+original upload at a permanent `i.redd.it` address) and `s.mp4` (Reddit's re-encode behind a signed
+preview link) — so every animated gallery item landed on disk twice. Now keeps the gif, falling back to
+the mp4 only when an item has no gif. The user chose gif over mp4 (original file, unsigned address, and
+GIFs are covered by the MD5 dedup) knowing the files are larger.
 
-**Noted, not acted on:**
-- The same gallery code adds **both** the `.gif` and the `.mp4` of every animated gallery item, so the
-  same animation lands on disk twice under two extensions. Raised with the user as a keep-which question.
-- Twitter saved posts now fetch `https://x.com/i/history` instead of `/i/bookmarks`. Out of our review
-  scope, and it may be deliberate, but it reads like a leftover.
+The inner gif/mp4 loop also caused a regression, fixed first in `d8d36f0`: it moved
+`If FirstOnly Then Exit For` inside itself, so cache mode (`FirstOnly` = `SaveToCache`) took an item from
+*every* gallery entry. With one variant per item the inner loop is gone and `Exit For` leaves the gallery
+loop again, which retires that patch.
+
+**Noted, not acted on:** Twitter saved posts now fetch `https://x.com/i/history` instead of
+`/i/bookmarks`. Out of our review scope, and it may be deliberate, but it reads like a leftover.
+
+**The built-in updater replaced the fork with vanilla.** At 01:05 on 2026-09-28 SCrawler's own updater
+installed the official 2026.9.21.0 release over the running copy: `SCrawler.exe` and the three
+`SCrawler.*.dll` became upstream's builds, with none of this fork's code. Nothing ran in between (no logs
+and no settings writes after the updater), so no harm was done, and deploying the merged build restored
+the fork. The updater is still a useful *there's a release* signal, but whatever it installs is vanilla
+until the merge is redeployed. Vanilla binaries kept at `D:\Utilities\SCrawler-backup-vanilla-2026.9.21.0\`.
+**Checking which build is deployed:** the file version cannot tell, since both say 2026.9.21.0. Search the
+exe for a fork-only type name (`ActivityLogForm`, `CrossAccountDedup`). Type names sit in the ASCII
+metadata heap. Searching for a UTF-16 string literal is unreliable: literals can start at odd byte
+offsets, and a whole-file UTF-16 decode then misses them. That false negative happened here once.
 
 **`lib/`:** the merged tree compiled against the *old* DLLs this time, so compilation is not a signal
 either way. **Check by content instead:** the release zip's central directory (the last ~64 KiB) lists
 every entry's CRC-32, so two HTTP Range requests compare the remote DLLs against `lib/` without
 downloading 360 MB. For this release all three differed (`PersonalUtilities.dll` grew 4 KB). The same
-Range trick extracts just the three DLLs (~2.3 MB, CRC-verified).
+Range trick extracts just the three DLLs (~2.3 MB, CRC-verified). Refreshed in `bfa8275`. Both are now
+**`Tools/release_dlls.py <tag> [--extract]`**. Checked against the previous release too: `lib/` before
+this merge was byte-identical to 2026.8.7.0's DLLs, so the old copies were current.
 
 ## Reddit ↔ RedGifs cross-account work (user feature, 2026-08-15)
 

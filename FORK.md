@@ -69,6 +69,9 @@ The short version — see [REVIEW.md](REVIEW.md) and the commit history for the 
   timeline look fully downloaded, so profiles whose reels were fetched first could never scan their
   timeline at all; and a per-post lookup scanned whole lists repeatedly, turning a large profile's
   catch-up into tens of minutes of pegged CPU.
+- **Reddit galleries**: upstream's animated-gallery support saves both a `.gif` and an `.mp4` of every
+  animated item; this fork keeps only the `.gif` (the original upload, from a permanent address) and
+  uses the `.mp4` only when there is no `.gif`.
 - Assorted correctness fixes in Reddit, RedGifs, Instagram, and TikTok parsing (wrong JSON node
   for TikTok repost dates, an Instagram width/height copy-paste, RedGifs post-ID corruption
   producing malformed API URLs, and more).
@@ -115,9 +118,21 @@ git merge upstream/main
 **Expect to refresh `lib\` as part of the merge.** Upstream builds against their own
 PersonalUtilities source and changes member accessibility between releases, so new upstream code
 often will not compile against older DLLs — the 2026.8.7.0 merge failed with a single
-`BC30451: '_Cookies' is not declared` until the DLLs were updated. Copy the three
-`PersonalUtilities*.dll` files from the root of that release's zip into `lib\`, then rebuild. When
-deploying, ship the refreshed DLLs alongside `SCrawler.exe`.
+`BC30451: '_Cookies' is not declared` until the DLLs were updated. A clean compile does not mean they
+are current, though (2026.9.21.0 compiled against the old ones), so check by content:
+
+```powershell
+py -3 Tools\release_dlls.py 2026.9.21.0             # compare lib\ with the release
+py -3 Tools\release_dlls.py 2026.9.21.0 --extract   # write the release's DLLs into lib\
+```
+
+It reads only the release zip's index and the three DLLs (a few MB, not the whole bundle) and verifies
+each file's CRC. Rebuild afterwards, and when deploying, ship the refreshed DLLs alongside
+`SCrawler.exe`.
+
+**SCrawler's built-in updater installs vanilla upstream.** Accepting its update prompt replaces this
+fork's binaries with the official release. That makes the prompt a handy "a new release is out" signal,
+but the install stays vanilla until the merged build is deployed again.
 
 Merge history is recorded in [REVIEW.md](REVIEW.md) under *Upstream merges*, including the
 conflict-resolution details for each release.
