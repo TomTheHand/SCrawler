@@ -6,6 +6,7 @@
 '
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY
+Option Strict On
 Namespace DownloadObjects
     ''' <summary>
     ''' Live feed of downloader activity: which job/user is being processed right now,

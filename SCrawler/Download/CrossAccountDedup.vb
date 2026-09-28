@@ -6,6 +6,7 @@
 '
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY
+Option Strict On
 Imports SCrawler.API
 Imports SCrawler.API.Base
 Imports UStates = SCrawler.API.Base.UserMedia.States

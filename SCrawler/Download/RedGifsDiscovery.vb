@@ -6,6 +6,7 @@
 '
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY
+Option Strict On
 Imports SCrawler.API
 Imports SCrawler.API.Base
 Imports PersonalUtilities.Functions.XML
@@ -62,8 +63,8 @@ Namespace DownloadObjects
             Private Function ToEContainer(Optional ByVal e As ErrorsDescriber = Nothing) As EContainer Implements IEContainerProvider.ToEContainer
                 Return New EContainer(Name_Node, RedGifsName, {New EAttribute(Name_RedditUser, RedditUser),
                                                                New EAttribute(Name_RedditKey, RedditKey),
-                                                               New EAttribute(Name_Count, Count),
-                                                               New EAttribute(Name_Dismissed, Dismissed)})
+                                                               New EAttribute(Name_Count, CStr(Count)),
+                                                               New EAttribute(Name_Dismissed, CStr(Dismissed))})
             End Function
             Friend Overloads Function Equals(ByVal Other As Discovery) As Boolean Implements IEquatable(Of Discovery).Equals
                 Return String.Equals(RedGifsName, Other.RedGifsName, StringComparison.OrdinalIgnoreCase) AndAlso

@@ -6,6 +6,7 @@
 '
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY
+Option Strict On
 Imports System.ComponentModel
 Imports SCrawler.API
 Imports SCrawler.API.Base
@@ -128,7 +129,7 @@ Namespace DownloadObjects
                         lvi.SubItems.Add(d.RedditUser)
                         lvi.SubItems.Add(d.Count.ToString)
                         lvi.SubItems.Add(CollectionNameOf(d).IfNullOrEmpty("(none)"))
-                        lvi.SubItems.Add(IIf(d.Dismissed, "Dismissed", "New"))
+                        lvi.SubItems.Add(If(d.Dismissed, "Dismissed", "New"))
                         .Items.Add(lvi)
                     Next
                     .EndUpdate()
@@ -185,7 +186,7 @@ Namespace DownloadObjects
                 If AcceptOne(items(i), i + 1, items.Count) Then done += 1
             Next
             Refill()
-            MsgBoxE({$"{done} of {items.Count} account(s) added.", Text}, IIf(done = items.Count, vbInformation, vbExclamation))
+            MsgBoxE({$"{done} of {items.Count} account(s) added.", Text}, If(done = items.Count, vbInformation, vbExclamation))
         End Sub
         ''' <summary>
         ''' Creates the RedGifs user, then drives the main window's add-to-collection command with the

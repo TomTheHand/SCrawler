@@ -6,6 +6,7 @@
 '
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY
+Option Strict On
 Imports System.ComponentModel
 Imports PersonalUtilities.Forms
 Namespace DownloadObjects
