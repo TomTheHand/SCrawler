@@ -970,7 +970,10 @@ CloseResume:
     Private Sub BTT_CONTEXT_READY_Click(sender As Object, e As EventArgs) Handles BTT_CONTEXT_READY.Click
         Dim users As List(Of IUserData) = GetSelectedUserArray()
         If AskForMassReplace(users, "Ready for download") Then
-            Dim r As Boolean = MsgBoxE({"What state do you want to set for selected users", "Select ready state"}, vbQuestion,,, {"Not Ready", "Ready"}).Index
+            ' Closing the dialog returns Index -1, which converted straight to Boolean is True ("Ready").
+            Dim choice% = MsgBoxE({"What state do you want to set for selected users", "Select ready state"}, vbQuestion,,, {"Not Ready", "Ready"}).Index
+            If choice < 0 Then Exit Sub
+            Dim r As Boolean = choice = 1
             users.ForEach(Sub(ByVal u As IUserData)
                               u.ReadyForDownload = r
                               u.UpdateUserInformation()
@@ -1974,9 +1977,11 @@ ResumeDownloadingOperation:
                                          "Do you want to copy to this folder or choose another destination?", MsgTitle}, vbQuestion,,,
                                         {New MsgBoxButton("Process") With {.ToolTip = "Use last folder"},
                                          New MsgBoxButton("Choose new") With {.ToolTip = "Choose a new destination"},
-                                         New MsgBoxButton("Cancel")})
+                                         New MsgBoxButton("Cancel")}).Index
+                        Case 0
                         Case 1 : If Not _select_path.Invoke Then Exit Sub
-                        Case 2 : MsgBoxE({"Operation canceled", MsgTitle}) : Exit Sub
+                        ' Closing the dialog (-1) used to fall through to "Process" and copy to the last folder.
+                        Case Else : MsgBoxE({"Operation canceled", MsgTitle}) : Exit Sub
                     End Select
                 Else
                     If Not _select_path.Invoke Then Exit Sub

@@ -13,7 +13,10 @@ Friend Class ListImagesLoader
     Private ReadOnly Property MyList As ListView
     Private Class AdvDistinctComparer : Implements IEqualityComparer(Of IUserData)
         Private Overloads Function Equals(ByVal x As IUserData, ByVal y As IUserData) As Boolean Implements IEqualityComparer(Of IUserData).Equals
-            Return DirectCast(x, UserDataBase).LVIKey.CompareTo(DirectCast(y, UserDataBase).LVIKey)
+            ' Was CompareTo(...), whose 0-for-equal converted to Boolean is False: equal users compared
+            ' unequal and, since GetHashCode ignores the site, same-named users on different sites compared
+            ' equal and one was dropped from the filtered list.
+            Return DirectCast(x, UserDataBase).LVIKey = DirectCast(y, UserDataBase).LVIKey
         End Function
         Private Overloads Function GetHashCode(ByVal Obj As IUserData) As Integer Implements IEqualityComparer(Of IUserData).GetHashCode
             Return DirectCast(Obj, UserDataBase).GetHashCode
