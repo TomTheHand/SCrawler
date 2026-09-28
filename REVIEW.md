@@ -217,9 +217,10 @@ Only visible change: `FeedMedia`'s tile menus loaded without icons but gave icon
 mid-session. Both now go without, the load path's behavior; each tile has its own menu, and every
 `My.Resources.RSSPic_512` access decodes a new 512×512 bitmap.
 
-**Noted, not changed (user's call):** if there are no special feeds when the feed window opens, the
-toolbar's Add and Load buttons are hidden and stay hidden after a feed is created, until restart.
-Deleting the last feed leaves them visible and empty.
+**Won't fix (user's decision, 2026-09-28):** if there are no special feeds when the feed window opens,
+the toolbar's Add and Load buttons are hidden and stay hidden after a feed is created, until restart.
+Deleting the last feed leaves them visible and empty. The user doesn't use the feed window, and a
+preference-only change there would widen the fork for no benefit.
 
 ### 2026-09-28 — Option Strict sweep (`c216d4c`, `f1c2979`)
 
