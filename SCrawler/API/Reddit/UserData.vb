@@ -916,8 +916,7 @@ Namespace API.Reddit
                 Dim added As Boolean = False
                 Dim node As EContainer = Nothing
                 Dim m As UserMedia
-                Dim isGif As Boolean
-                Dim i%
+                Dim isGif As Boolean, isMp4 As Boolean
                 If e.Contains("media_metadata") Then
                     node = e("media_metadata")
                 ElseIf e.Contains("mediaMetadata") Then
@@ -926,27 +925,29 @@ Namespace API.Reddit
                 If If(node?.Count, 0) > 0 Then
                     Dim t As EContainer
                     For Each n As EContainer In node
-                        isGif = False
-                        Select Case n.Value("e")
-                            Case "AnimatedImage" : isGif = True : t = Nothing
-                            Case Else : t = n.ItemF({"s", "u"})
-                        End Select
-                        For i = 0 To IIf(isGif, 1, 0)
-                            If isGif Then t = If(i = 0, n.ItemF({"s", "gif"}), n.ItemF({"s", "mp4"}))
-                            If Not t Is Nothing AndAlso Not t.Value.IsEmptyString Then
-                                m = MediaFromData(IIf(i = 0, IIf(isGif, UTypes.GIF, UTypes.Picture), UTypes.GIF), t.Value, PostID, PostDate, _UserID,, PostText)
-                                If isGif And i = 1 Then
-                                    m.File = CreateFileFromUrl(t.Value)
-                                    m.File.Extension = "mp4"
-                                    m.URL = t.Value
-                                End If
-                                _TempMediaList.ListAddValue(m, LNC)
-                                added = True
-                                If FirstOnly Then Exit For
+                        isGif = n.Value("e") = "AnimatedImage"
+                        isMp4 = False
+                        If isGif Then
+                            ' An animated item offers the same animation twice: "gif", normally the original
+                            ' upload at a permanent i.redd.it address, and "mp4", Reddit's re-encode behind a
+                            ' signed preview link. Saving both put every animation on disk twice, so keep the
+                            ' gif and fall back to the mp4 only when an item has no gif.
+                            t = n.ItemF({"s", "gif"})
+                            If t Is Nothing OrElse t.Value.IsEmptyString Then t = n.ItemF({"s", "mp4"}) : isMp4 = True
+                        Else
+                            t = n.ItemF({"s", "u"})
+                        End If
+                        If Not t Is Nothing AndAlso Not t.Value.IsEmptyString Then
+                            m = MediaFromData(If(isGif, UTypes.GIF, UTypes.Picture), t.Value, PostID, PostDate, _UserID,, PostText)
+                            If isMp4 Then
+                                m.File = CreateFileFromUrl(t.Value)
+                                m.File.Extension = "mp4"
+                                m.URL = t.Value
                             End If
-                        Next
-                        ' The Exit For above only leaves the gif/mp4 loop; FirstOnly means one item per gallery.
-                        If FirstOnly AndAlso added Then Exit For
+                            _TempMediaList.ListAddValue(m, LNC)
+                            added = True
+                            If FirstOnly Then Exit For
+                        End If
                     Next
                 End If
                 Return added
