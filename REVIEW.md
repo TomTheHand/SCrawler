@@ -22,6 +22,8 @@ chunk-5 notes.
 - `SFile` is a **struct** — never use `Is`/`IsNot Nothing`; use `.IsEmptyString`.
 - Git: `origin` = TomTheHand fork (push here), `upstream` = AAndyProgram.
 - Use the PowerShell tool for git/msbuild, not Bash.
+- **Files this fork adds start with `Option Strict On`** (the project default is Off). Upstream's files stay
+  as they are; see *Code-quality passes* for why.
 
 ## Post-review fixes from live logs
 
@@ -198,6 +200,74 @@ so the recency check is what actually prevents the stampede). Wired into `UserDa
 (user listing; handles the failure arriving as either an exception or an empty string) and into
 `GetDataFromUrlId` (also used by Reddit to resolve RedGifs links). **Exactly one retry per user per run**
 (`_TokenRetried`, reset in `DownloadDataF`) — a second 401 is a real failure and is logged as such.
+
+## Code-quality passes
+
+### 2026-09-28 — special-feed menus registered once (`14c5fa7`)
+
+The menus listing special feeds were kept in sync by hand in five places: `DownloadFeedForm` repeated its
+8 menus for load, feed-added and feed-removed, and `FeedMedia` its 3 for load and each event. A menu
+missing from one copy left a stale item behind after its feed was deleted, which happened twice
+(`BTT_FEED_ADD_SPEC_REMOVE` in chunk 5, `BTT_LOAD_T` upstream in 2026.9.21.0). New
+`DownloadFeedForm.FeedMenus` registers each menu once with its handler and icon factory; `AddFeed` and
+`RemoveFeed` walk the list. The 8 pairings were verified identical to the old code. Icons stay one
+instance per item (a factory, not a shared `Image`), since items are disposed independently.
+
+Only visible change: `FeedMedia`'s tile menus loaded without icons but gave icons to feeds created
+mid-session. Both now go without, the load path's behavior; each tile has its own menu, and every
+`My.Resources.RSSPic_512` access decodes a new 512×512 bitmap.
+
+**Noted, not changed (user's call):** if there are no special feeds when the feed window opens, the
+toolbar's Add and Load buttons are hidden and stay hidden after a feed is created, until restart.
+Deleting the last feed leaves them visible and empty.
+
+### 2026-09-28 — Option Strict sweep (`c216d4c`, `f1c2979`)
+
+**Turning Strict on project-wide does not work as a probe.** `/p:OptionStrict=On` yields just 87 errors,
+all declaration-level (missing `As` clauses, `Handles` delegate relaxation, optional-parameter defaults),
+and the compiler **stops after the declaration stage when it has errors**, so no method body is checked.
+The useful probe is Option Strict *Custom*: keep it Off and re-enable its diagnostics as warnings by
+clearing the project's `NoWarn` (42016, 41999, 42017–42022, 42032, 42036), building into a scratch folder:
+
+```powershell
+# stage the sibling DLLs into $out\bin first: a global OutDir also redirects where references resolve
+MSBuild SCrawler\SCrawler.vbproj /p:Configuration=Release /p:Platform=AnyCPU /p:OptionStrict=Off "/p:NoWarn=" `
+        /p:BuildProjectReferences=false "/p:OutDir=$out\bin\" "/p:IntermediateOutputPath=$out\obj\" /t:Rebuild
+```
+
+That gives **1,559** diagnostics: 1,296 implicit conversions, 197 ByRef copy-back conversions, 56
+late-bound or `Object`-operand uses, and 10 places that fall back to `Object` (functions and operators
+without `As`, failed type inference). Triaged by from→to type pair, since the
+pair carries the risk: enum-to-different-enum, Double→Integer (banker's rounding), Boolean→Integer (−1),
+Long→Integer, nullable→value, String→Char (a multi-character string silently becomes its first char).
+Nearly everything was benign by design: `ViewModes` is defined from `View`'s values, the plugin enums copy
+the internal ones value for value, RedGifs stores HTTP 410 in `State` as a deliberate "gone" marker,
+Twitter stores its `DownloadModels` in Instagram's `PostKV.Section` consistently, all 81 String→Char
+operands are single characters, and every untyped function returns Boolean on all paths.
+
+**Three real bugs, fixed in `c216d4c`:**
+- **"Ready for download" set users Ready when the dialog was closed.** `Dim r As Boolean = MsgBoxE(...).Index`;
+  X returns `Index = -1`, and `CBool(-1)` is True. Closing now changes nothing.
+- **"Copy user data" copied when the prompt was closed.** `Select Case` handled 1 (Choose new) and 2
+  (Cancel) only, so X (−1) fell through to "Process" and copied every selected user's files to the last
+  folder. Closing now cancels; the three buttons are unchanged.
+- **`ListImagesLoader.AdvDistinctComparer.Equals` returned `LVIKey.CompareTo(...)`**, so 0 (same) became
+  False. Its partner `UserDataBase.GetHashCode` hashes the (friendly) name *without the site* (or the
+  collection name), so `Distinct` compared same-named users on different sites, got "equal", and dropped
+  one from the filtered profile list. Latent here: `ShowAllUsers` is on, and a simulation over the real
+  user list found no collisions, because same-named accounts live in collections.
+
+Both dialog findings were **verified by driving the real PersonalUtilities dialog** from Windows PowerShell
+5.1 (it needs .NET Framework — under `pwsh` the library fails on BinaryFormatter): pressing each button
+and posting `WM_CLOSE` for the X.
+
+**`f1c2979`:** project-wide Strict is not worth it (1,559 sites of mostly benign churn in upstream's code,
+conflicting with every future merge). Instead the six fork-authored files now carry `Option Strict On`; they
+needed four small changes (two `CStr` for XML attributes with identical output, two `IIf` → `If`).
+
+Also noticed: ThisVid's `n.TrimStart("?", "q", "=")` treats `?q=` as a character set, so a name that starts
+with "q" loses it. Out of scope (ThisVid is unused here) and not fixed. Every guarded `IIf` (which
+evaluates both branches) was checked for a branch that throws when the guard fails. None does.
 
 ## Upstream merges
 
@@ -804,4 +874,10 @@ Pre-ledger work (earlier sessions, already committed to fork):
 ## PersonalUtilities Hazards (closed-source, work around only)
 
 - `Responser._ErrorProcessor` is left uninitialised → its own catch block throws NullReferenceException on HTTP-level errors. Workaround: `SafeGetResponse` in `UserDataBase.vb`.
+- **`MsgBoxE` closed with the title-bar X returns `Index = -1` with `DialogResult = OK`** (verified on the
+  real dialog). Only the index says it was dismissed. Never convert `.Index` straight to Boolean
+  (−1 → True), and give `Select Case` on the result a `Case Else` that cancels. `result = n` compares `Index`.
+- **`FComparer(Of T)(Comparison)` treats any non-zero result as *equal*** in its `Equals` (verified by
+  reflection-invoking it). Upstream's `Function(x, y) x.A = y.A` lambdas (True → −1) are therefore correct
+  for equality use; a real `CompareTo`-style comparison passed to it would make `Equals` backwards.
 - (append others as discovered)

@@ -62,7 +62,10 @@ The short version — see [REVIEW.md](REVIEW.md) and the commit history for the 
   every video tile created its own never-disposed native VLC engine; page changes stole focus from
   other applications; unsynchronized cross-thread access to the shared feed data list.
 - **Main UI**: a stale selection silently dropped the whole user selection; removing a user could
-  corrupt other users' icons in picture view; landscape thumbnails were stretched.
+  corrupt other users' icons in picture view; landscape thumbnails were stretched; closing the
+  *Ready for download* dialog with X marked every selected user Ready, and closing the *Copy user data*
+  prompt with X copied their files anyway; a filtered profile list could drop one of two same-named
+  users on different sites.
 - **Instagram**: a single malformed reply (an HTTP 200 carrying a web page instead of JSON) was read
   as "your credentials expired" and switched off every Instagram download option in the saved
   settings, skipping the rest of the batch; a post already downloaded as a reel made the profile
