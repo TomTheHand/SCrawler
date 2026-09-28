@@ -945,6 +945,8 @@ Namespace API.Reddit
                                 If FirstOnly Then Exit For
                             End If
                         Next
+                        ' The Exit For above only leaves the gif/mp4 loop; FirstOnly means one item per gallery.
+                        If FirstOnly AndAlso added Then Exit For
                     Next
                 End If
                 Return added
