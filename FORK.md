@@ -97,7 +97,19 @@ committed in `lib\` instead, so it builds standalone — after one piece of one-
   ```
 
 Prerequisites: Visual Studio Build Tools (MSBuild) with the **.NET Framework 4.6.1 targeting
-pack**, and `nuget restore SCrawler.sln` once. Then:
+pack**, and `nuget restore SCrawler.sln` once. Microsoft's installer can do the Build Tools part
+unattended, with only what this project needs (a few hundred MB; the path flags keep nearly all of it
+off C:, but `--path shared=` only works while no other Visual Studio is installed):
+
+```powershell
+# from https://aka.ms/vs/18/stable/vs_buildtools.exe  (note: .../18/release/... is NOT a valid link)
+Start-Process .\vs_buildtools.exe -Wait -ArgumentList '--installPath "D:\Utilities\VSBuildTools"',
+    '--path shared="D:\Utilities\VSBuildTools\Shared"',
+    '--add Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools',
+    '--add Microsoft.Net.Component.4.6.1.TargetingPack', '--nocache --passive --wait --norestart'
+```
+
+Then:
 
 ```powershell
 MSBuild.exe SCrawler.sln /p:Configuration=Release "/p:Platform=Any CPU" /t:Build /m

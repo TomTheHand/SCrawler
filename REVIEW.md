@@ -367,6 +367,41 @@ Range trick extracts just the three DLLs (~2.3 MB, CRC-verified). Refreshed in `
 **`Tools/release_dlls.py <tag> [--extract]`**. Checked against the previous release too: `lib/` before
 this merge was byte-identical to 2026.8.7.0's DLLs, so the old copies were current.
 
+### 2026.10.26.0 — merged 2026-10-27 (commit `b24e4d0`)
+
+17 files, +266/−76, mostly the YouTube downloader ("correct processing of AI results"). Overlap with ours was
+3 files, and one conflicted:
+
+- **`UserDataBase.vb`, the text-post block (`stxt:`).** Upstream now saves *text-only* posts to
+  `<user>\Text\` (new `PostTextTEXTSpecialFolderDefault`) and moves a sidecar whose media sits outside the
+  user's folder back inside it. We had wrapped that block in `textTargetOk` (chunk 6, so a text post with no
+  destination is marked Skipped instead of being written to a bogus path). Kept the guard, with upstream's
+  path logic inside it.
+- Auto-merged without trouble: Instagram's saved-posts paging (upstream had passed an empty cursor on every
+  page), OnlyFans text posts and description line breaks, Xhamster's yt-dlp progress scaling.
+
+**Upstream bug fixed on merge (`Structures.vb`, `584082c`).** `UserMedia`'s loader rebuilds every record's file paths
+from the user's current folder (so records survive folder moves), and for the post text it assumed
+`txt\` or the user root. A text-only post saved in the new `Text\` folder would therefore rebuild to a path
+that doesn't exist. The record stores only the file name, so it can't say which layout a post was saved
+under. The loader now uses `Text\` when the file is there and the old rule otherwise, which keeps posts
+saved before this release resolving. **Not visible here:** the library holds 0 text-only records, and its
+1,091 text sidecars belong to media posts, whose placement upstream didn't change.
+
+**`lib/`:** `PersonalUtilities.dll` is unchanged this release; the Images and Notifications DLLs differ (same
+sizes). Refreshed both via `Tools/release_dlls.py` (`5f27fc8`), which now also skips files that already
+match instead of re-downloading them.
+
+**Build Tools.** The VS Build Tools had been uninstalled from this machine on 2026-10-23 during a disk
+cleanup (taking the .NET Framework reference assemblies with them), so the merged tree could not be built
+until they were reinstalled. That was done on 2026-10-27: VS 2026 Build Tools (MSBuild 18.11) at
+**`D:\Utilities\VSBuildTools`**, shared components under it, no download cache, only the .NET desktop build
+workload plus the 4.6.1 targeting pack. It took about a minute and 122 MB on D:; only the installer itself and the
+reference assemblies land on C:. The exact command is in FORK.md → *Building from source*. **The build
+command is now `D:\Utilities\VSBuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe`.**
+**`aka.ms/vs/18/release/vs_buildtools.exe` is not a real link: it redirects to a Bing search page. The
+VS 2026 channel is `stable`.** The merged tree rebuilt clean (full `/t:Rebuild`) on the reinstalled tools.
+
 ## Reddit ↔ RedGifs cross-account work (user feature, 2026-08-15)
 
 Motivation: Reddit posters frequently link videos from their own RedGifs account. The user adds both
