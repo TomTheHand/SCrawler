@@ -253,7 +253,15 @@ Namespace API.Base
                     File = $"{upath.CSFilePS}{File.File}"
                     If Not PostTextFile.IsEmptyString Then
                         PostTextFile = $"{upath.CSFilePS}{IIf(PostTextFileSpecialFolder, $"{UserDataBase.PostTextSpecialFolderDefault}\", String.Empty)}{PostTextFile.File}"
-                        If Type = Types.Text Then File = PostTextFile
+                        If Type = Types.Text Then
+                            ' Since 2026.10.26.0 a text-only post is saved in "Text\" whatever the txt-folder setting
+                            ' says. The record keeps only the file name, so a post saved there would rebuild to the
+                            ' old location and point at nothing; posts saved earlier really are in the old one.
+                            ' Use "Text\" when the file is there.
+                            Dim inTextFolder As SFile = $"{upath.CSFilePS}{UserDataBase.PostTextTEXTSpecialFolderDefault}\{PostTextFile.File}"
+                            If inTextFolder.Exists Then PostTextFile = inTextFolder
+                            File = PostTextFile
+                        End If
                     End If
                 End If
 
