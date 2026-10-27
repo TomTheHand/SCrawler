@@ -59,6 +59,11 @@ for name in dlls:
     crc, usize, csize, method, local_header = entries[name]
     local = LIB / name
     if EXTRACT:
+        if local.exists():
+            data = local.read_bytes()
+            if (zlib.crc32(data) & 0xFFFFFFFF) == crc and len(data) == usize:
+                print(f"SAME    {name}  (already current, not downloaded)")
+                continue
         hdr, _ = fetch(local_header, local_header + 29)
         nlen, xlen = struct.unpack_from("<HH", hdr, 26)
         start = local_header + 30 + nlen + xlen
