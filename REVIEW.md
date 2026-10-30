@@ -402,6 +402,14 @@ command is now `D:\Utilities\VSBuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe`
 **`aka.ms/vs/18/release/vs_buildtools.exe` is not a real link: it redirects to a Bing search page. The
 VS 2026 channel is `stable`.** The merged tree rebuilt clean (full `/t:Rebuild`) on the reinstalled tools.
 
+### 2026.10.29.0 — merged 2026-10-30 (commit `4ab9b73`)
+
+A hot-fix three days after 2026.10.26.0: **Instagram user stories were not downloading.** Instagram rotated
+the GraphQL `doc_id` for `PolarisStoriesV3ReelPageStandaloneQuery` and now requires a relay-provider
+variable (`__relay_internal__pv__PolarisCommunityNoteStoriesLabelEnabledrelayprovider`). 4 lines in
+`UserData.GQL.vb`, a file this fork has never touched: no overlap, no conflicts. `lib/` DLLs identical to
+the previous release. Built clean, deployed (backup `D:\Utilities\SCrawler-backup-pre-2026.10.29.0\`).
+
 ## Reddit ↔ RedGifs cross-account work (user feature, 2026-08-15)
 
 Motivation: Reddit posters frequently link videos from their own RedGifs account. The user adds both
