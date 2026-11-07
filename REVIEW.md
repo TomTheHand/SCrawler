@@ -231,6 +231,17 @@ timed as well (107,517 URLs, 2.2 s: short URLs, simpler pattern), so it was left
 Why "restarting fixed it" last time: almost certainly it didn't. The same work just ran to completion
 unobserved; every Instagram user paid this cost on every run.
 
+**Open, found while closing that run (upstream exit path, not fixed yet):** in `MainFrame_Closing`, the
+first close while downloading answers "Stop downloading and close", calls `Downloader.Stop()`, sets
+`e.Cancel` and *awaits* the downloads stopping, with no visible sign it's waiting. A second close then takes
+`If _CloseInvoked Then GoTo CloseResume`, which lets the form close and skips the disposal block, including
+`Downloader.Dispose()` and **`Settings.Dispose()`**, the settings save. The awaited continuation can never run
+afterwards, because it's posted to the UI thread whose message loop has ended. Meanwhile the foreground
+`JobsChecker` thread keeps a windowless process alive until the job finishes. Seen here: the window gone, the
+activity log closed, PID still running, `Settings.xml` last written 10-30. Fix sketch: while the wait is
+pending, a further close should stay cancelled (and the window should say it's stopping); only the `Close()`
+issued after the wait goes through `CloseResume`. Needs the user's look at the "stopping" indication first.
+
 ## Code-quality passes
 
 ### 2026-09-28 — special-feed menus registered once (`14c5fa7`)
