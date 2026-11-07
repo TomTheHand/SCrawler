@@ -201,6 +201,36 @@ so the recency check is what actually prevents the stampede). Wired into `UserDa
 `GetDataFromUrlId` (also used by Reddit to resolve RedGifs links). **Exactly one retry per user per run**
 (`_TokenRetried`, reset in `DownloadDataF`) — a second 401 is a real failure and is logged as such.
 
+### 2026-11-07 — Instagram: an hour per profile in the file-name regex (my de-dup, Sept)
+
+Symptom: the run "stalled" on Instagram. The activity log had stopped 33 minutes earlier, right after
+`piercednoodles`' scan, while one thread sat at 100% CPU. **Diagnosed live, without touching the process**:
+the per-thread start module showed the hot thread was managed, and a ClrMD snapshot
+(`DataTarget.CreateSnapshotAndAttach`, read-only) showed its stack: Instagram `DownloadDataF` → `RemoveDuplicateMedia`
+→ `MediaDedupKey` → PersonalUtilities `RegexReplace` → `RegexInterpreter.Go`. Not hung, just slow. Earlier users had
+paid the same cost (`norafawn` sat 43 min between its scan and its downloads), and the "stall" was simply the
+biggest profile yet: 2,440 stored items, 2.8 MB of history.
+
+Root cause: Instagram's `FilesPattern` (`.+?([^/\?]+?\.[\w\d]{3,4})(?=(\?|\Z))`) backtracks roughly **cubically**
+in the URL's length, because PersonalUtilities' `RegexReplace` evaluates `MatchCollection.Count` (every match,
+not just the first), so after finding the file name the scan grinds through the whole query string. Timed on
+real stored URLs under **.NET Framework 4.8: 0.3–4.2 s per URL** (526 → 1,190 characters, 4223/552 ≈ (1190/618)³).
+Under .NET 10 the same calls take a few ms, so measure on the target runtime. Instagram's CDN URLs are now
+500–1,200 characters. The September de-dup (`b445757`/`d47ccdf`) computes that key for *every* stored
+Downloaded item on every run; I had validated it for correctness on a small user and never timed it at scale.
+Upstream's own `MediaFromData` also runs the regex on every newly parsed item (19 new posts took 1 m 39 s).
+
+Fix: `Declarations.FileNameFromUrl`, a single linear pass that returns exactly what the regex returns (the last
+path segment ending in a 3–4 character `[\w\d]` extension, followed by `?` or the end, trying each `?` then the end
+in the regex's order, honoring its leading `.+?`). Used by both `MediaDedupKey` and `MediaFromData`, so file
+naming and de-dup keys stay derived identically. **Verified by running the real library regex and the compiled
+function side by side** on all 24,719 stored Instagram URLs plus 29 edge cases: **0 mismatches**. The whole library
+now takes 38 ms on .NET Framework. The global `FilesPattern` (Reddit/RedGifs keys in `CrossAccountDedup`) was
+timed as well (107,517 URLs, 2.2 s: short URLs, simpler pattern), so it was left as is.
+
+Why "restarting fixed it" last time: almost certainly it didn't. The same work just ran to completion
+unobserved; every Instagram user paid this cost on every run.
+
 ## Code-quality passes
 
 ### 2026-09-28 — special-feed menus registered once (`14c5fa7`)

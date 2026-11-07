@@ -592,12 +592,13 @@ Namespace API.Instagram
         ''' </summary>
         ''' <summary>
         ''' Instagram does not override <c>CreateFileFromUrl</c>, so the base derivation would be applied to
-        ''' the raw signed URL. Use the same <c>FilesPattern</c> regex <see cref="MediaFromData"/> names
-        ''' files with, which strips the query string.
+        ''' the raw signed URL. Use the same derivation <see cref="MediaFromData"/> names files with
+        ''' (<see cref="FileNameFromUrl"/>, FilesPattern's result), which strips the query string. This runs
+        ''' for every stored item, so it must not use the regex itself: see FileNameFromUrl.
         ''' </summary>
         Friend Overrides Function MediaDedupKey(ByVal Media As UserMedia) As String
             If Media.URL.IsEmptyString Then Return String.Empty
-            Return CStr(RegexReplace(Media.URL, FilesPattern))
+            Return FileNameFromUrl(Media.URL)
         End Function
         Private Sub RemoveDuplicateMedia()
             Try
@@ -1780,7 +1781,7 @@ NextPageBlock:
                                        Optional ByVal Text As String = Nothing) As UserMedia
             _URL = LinkFormatterSecure(RegexReplace(_URL.Replace("\", String.Empty), LinkPattern))
             Dim m As New UserMedia(_URL, t) With {.URL_BASE = PostOriginUrl.IfNullOrEmpty(_URL), .Post = New UserPost With {.ID = PostID}}
-            If Not m.URL.IsEmptyString Then m.File = CStr(RegexReplace(m.URL, FilesPattern))
+            If Not m.URL.IsEmptyString Then m.File = FileNameFromUrl(m.URL)   'FilesPattern's result, without its backtracking
             If Not PostDate.IsEmptyString Then m.Post.Date = AConvert(Of Date)(PostDate, UnixDate32Provider, Nothing) Else m.Post.Date = Nothing
             m.SpecialFolder = SpecialFolder
             If State = UStates.Missing Then m.State = UStates.Missing : m.Attempts = Attempts
