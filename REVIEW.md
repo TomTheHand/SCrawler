@@ -451,6 +451,27 @@ variable (`__relay_internal__pv__PolarisCommunityNoteStoriesLabelEnabledrelaypro
 `UserData.GQL.vb`, a file this fork has never touched: no overlap, no conflicts. `lib/` DLLs identical to
 the previous release. Built clean, deployed (backup `D:\Utilities\SCrawler-backup-pre-2026.10.29.0\`).
 
+### 2026.11.8.0 — merged 2026-11-25 (commit `4aa8ee5`)
+
+9 files, +168/−69, all auto-merged. The merge commit's stat equals upstream's own diff.
+
+- **Reddit channels were not downloading.** `DownloadDataChannel` now uses `oauth.reddit.com/r/…` when
+  the site has credentials (the unauthenticated `reddit.com/r/…` stays the fallback). It's the same
+  region where this fork added `SafeGetResponse` and the empty-response logging (Bug 6). The new branch sits
+  above both, and both survive.
+- **Reddit view settings gain "profile exists" and "profile suspended" checkboxes**, which the generic
+  options form already gave other sites. `IRedditView` grows `UserExists`/`UserSuspended`, and the three
+  copy-every-field `SetView` bodies collapse into one shared `RedditViewExchange.SetView`. Checked: the
+  site-level exchange object takes the base default `UserExists = True`, so creating a user through this
+  form doesn't mark it missing.
+- PornHub subscriptions load photos (yt-dlp is no longer forced for subscription items). Tom has no PornHub users.
+
+**The built-in updater had installed vanilla 2026.11.8.0 on 2026-11-08** (no fork types in the exe). No
+log files were written after that, so the vanilla build never ran a download. Backup:
+`D:\Utilities\SCrawler-backup-vanilla-2026.11.8.0\`. `lib/` is CRC-identical to the release's DLLs.
+gallery-dl was already 1.32.19, the release's pinned version. Built clean and deployed. The deployed files
+hash-match the build, and the exe contains the fork-only types again.
+
 ## Reddit ↔ RedGifs cross-account work (user feature, 2026-08-15)
 
 Motivation: Reddit posters frequently link videos from their own RedGifs account. The user adds both
