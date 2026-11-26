@@ -466,8 +466,10 @@ the previous release. Built clean, deployed (backup `D:\Utilities\SCrawler-backu
   form doesn't mark it missing.
 - PornHub subscriptions load photos (yt-dlp is no longer forced for subscription items). Tom has no PornHub users.
 
-**The built-in updater had installed vanilla 2026.11.8.0 on 2026-11-08** (no fork types in the exe). No
-log files were written after that, so the vanilla build never ran a download. Backup:
+**The built-in updater had installed vanilla 2026.11.8.0 minutes before the merge** (Tom noticed at once;
+no fork types in the exe, never run). **The exe's 2026-11-08 timestamp is the release's build time,
+carried over from the zip, not the install time.** The install moment shows on files the updater creates
+fresh (here `Environment\cURL\`, stamped at the install). Backup:
 `D:\Utilities\SCrawler-backup-vanilla-2026.11.8.0\`. `lib/` is CRC-identical to the release's DLLs.
 gallery-dl was already 1.32.19, the release's pinned version. Built clean and deployed. The deployed files
 hash-match the build, and the exe contains the fork-only types again.
