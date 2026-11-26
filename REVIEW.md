@@ -3,11 +3,19 @@
 Persistent state for the multi-session code review + hardening effort.
 Any Claude session (any model) resumes from this file — read it fully before touching code.
 
-**STATUS: the planned review is COMPLETE** (chunks 1–6 + 5.5, finished 2026-07-09). No Open
-Suspicions remain. This file stays as the authoritative record of what was reviewed, fixed, and
-deliberately left alone; [FORK.md](FORK.md) is the user-facing summary. Remaining open item
-(user decision, not review work): the Feed async/placeholder tile-loading redesign — see the
-chunk-5 notes.
+**STATUS: the planned review is COMPLETE** (chunks 1–6 + 5.5, finished 2026-07-09). Since then the
+work has been fixes from live logs, user features, code-quality passes and upstream merges, each
+recorded below. This file stays as the authoritative record of what was reviewed, fixed, and
+deliberately left alone; [FORK.md](FORK.md) is the user-facing summary.
+
+**Open items:**
+- **A second close while downloads are stopping skips the settings save** and leaves a windowless
+  process. The user wants this fixed; the "stopping…" indication is to be shown to them (mockup)
+  before committing. See the 2026-11-07 entry under *Post-review fixes from live logs*.
+- **Date limits compare UTC post dates with locally entered dates.** Needs a per-site audit. See
+  *Open Suspicions*.
+- **Feed async/placeholder tile loading**: a redesign question for the user, unanswered. See the
+  chunk-5 notes.
 
 ## Ground rules
 
@@ -27,7 +35,7 @@ chunk-5 notes.
 
 ## Post-review fixes from live logs
 
-### 2026-09-08 — Instagram: a 200 with a bad body disabled the whole site
+### 2026-09-08 — Instagram: a 200 with a bad body disabled the whole site (`438e2af`)
 
 `Log_20260908_234353.txt`: Instagram answered **HTTP 200** for one user with a body that was not JSON
 (literally `.`). `DownloadData`'s `JsonDocument.Parse(r)` had no `ErrorsDescriber`, so it threw;
@@ -48,7 +56,7 @@ still disable, unchanged.
 **Lesson worth keeping: `DisableSection` mutates saved settings.** Any new branch that can reach it is
 a config-destroying branch, not just a logging one.
 
-### 2026-09-09 — Instagram: the REST feed endpoint stopped returning JSON
+### 2026-09-09 — Instagram: the REST feed endpoint stopped returning JSON (`3ecabfb`, `2da1c19`)
 
 Follow-up to the entry above. Once a bad body no longer disabled the site, **every** Instagram user
 failed identically: HTTP 200 with 782 KB of HTML. Diagnosed by saving the body
@@ -68,7 +76,7 @@ through to the SPA. **Fix is a setting, not code: enable "Use GraphQL to downloa
 upstream author posted the same advice on Discord independently. Consistent with SCrawler already
 defaulting `USE_GQL_UserData` and `USE_GQL_Highlights` to True — the main feed was the last REST holdout.
 
-### 2026-09-09 — Instagram: a reel masked the same post in the timeline
+### 2026-09-09 — Instagram: a reel masked the same post in the timeline (`4a9051c`, `3cbb429`)
 
 Symptom: with GraphQL enabled some users downloaded fine, others produced nothing with **no error**.
 Diagnosis came from the per-user `Posts_KV.xml` `Section` attribute (`Timeline=0, Reels=1`): a working
@@ -91,13 +99,13 @@ timeline failed, banking reels-only history that then blocked the timeline forev
 
 Fix: use the section-aware `PostsKVIDs` to reject the false positive, but only on **positive evidence**
 (the ID is recorded under another section and not under this one); anything less certain keeps the old
-behaviour, so users with normal timeline history are untouched. Also added a diagnostic line naming the
+behavior, so users with normal timeline history are untouched. Also added a diagnostic line naming the
 section, the post a scan stopped on, and its position in the page — "item 1 of 12" means the scan
 covered nothing.
 
 Follow-up **RESOLVED** by `b445757` — see below.
 
-### 2026-09-09 — Instagram: de-duplicate media reached from two sections
+### 2026-09-09 — Instagram: de-duplicate media reached from two sections (`b445757`)
 
 Consequence of the fix above: an unblocked timeline re-reaches posts whose reels are already on disk,
 and nothing caught it (`DownloadContentDefault`'s MD5 comparison covers only GIF/Picture — these are
@@ -132,10 +140,10 @@ Design agreed with the user: the **filename prefix keeps the server's UTC instan
 the **file timestamp is that same instant rendered locally** (presentation). They are not inconsistent;
 they are one moment shown two ways.
 
-**Library migration (one-off, done 2026-09-09).** Script:
-`scratchpad\Fix-SCrawlerFileDates.ps1`; reversal log preserved at
-`D:\Utilities\SCrawler-filedates-backup\SCrawlerFileDates_*.csv` (77,446 rows with the previous
-timestamps). Scanned **`D:\pr0n`, not just `SCrawler downloads`** — 8 of the 234 user data files sit in
+**Library migration (one-off, done 2026-09-09).** Script and reversal log are both kept in
+`D:\Utilities\SCrawler-filedates-backup\`: `Fix-SCrawlerFileDates.ps1` (re-runnable, dry run by default)
+and `SCrawlerFileDates_*.csv` (77,446 rows with the previous timestamps). The run overwrote download
+times, which were mostly bulk-copy artifacts anyway. Scanned **`D:\pr0n`, not just `SCrawler downloads`** — 8 of the 234 user data files sit in
 folders left behind by deleted users. Built a global filename index (200,143 files) and preferred a
 match inside the record's own user folder, falling back to a single unambiguous match anywhere; that
 recovered **1,489 files** sitting at collection roots that a per-user search missed, with zero
@@ -170,7 +178,7 @@ key) and matches on either, so it gains coverage instead of trading one key for 
 Validated on real data before deploying, since these paths delete/skip: Reddit and RedGifs derive the
 identical key form for the same gif, and Instagram produced a key for 36/36 stored records, all distinct.
 
-### 2026-09-09 — Instagram: pacing pauses were invisible
+### 2026-09-09 — Instagram: pacing pauses were invisible (`8175e0a`)
 
 Instagram has five sleeps; three were silent, producing 2–3 minute gaps per profile with nothing logged.
 New `WaitLogged(ms, reason)` wraps them all: `RequestsWaitTimer_Any` (before every request, ~15 sites),
@@ -184,7 +192,30 @@ for without hundreds of lines per run.
 `{RequestsWaitTimer_Any, RequestsWaitTimer, SleepTimerOnPostsLimit}.Max` — so raising the posts-limit
 timer silently lengthens the wait before *every* profile. The log line says so when -2 is in effect.
 
-### 2026-09-08 — RedGifs: no reactive token refresh
+### 2026-09-09 — Instagram: `PostKvExists` was quadratic over a profile scan (`9833bf2`)
+
+`PostKvExists` runs for every parsed post and scanned `PostsKVIDs` and `_TempPostsList` linearly each
+time, which is O(n²) across a scan over lists that grow to thousands. The cross-section check in `3cbb429`
+added two more linear scans per check, and unblocking timelines meant far more posts to check. On a
+~3.4k-record profile a paced catch-up became tens of minutes of pegged CPU. Both lists are now mirrored
+as hash sets, synced incrementally from the last known count (they only append during a run; rebuilding
+per add would restore the O(n²)). A shrink means the list was replaced, so the mirror is rebuilt.
+Comparisons stay Ordinal, since shortcodes are case-sensitive. Scan progress is now reported per page.
+
+**This was not the end of it.** In November the same symptom came back from a different cause, the
+file-name regex in the de-dup key (see the 2026-11-07 entry).
+
+### 2026-09-09 — the activity log persists to a file per run (`953c819`)
+
+The in-memory activity log died with the process, and the questions it answers ("what was it doing
+during that 30-minute gap", "did it stall or was it pacing") get asked after a run ends or after a
+hang. The reel/timeline diagnosis above had to be reconstructed from stored XML for that reason. Every
+line is now mirrored to `LOGs\Activity_<timestamp>.txt`, one per run, with the last 10 kept. AutoFlush is
+on deliberately, because a buffered tail would be lost in exactly the crash and hang cases. Any IO failure
+disables file logging for the run rather than disturbing a download. The file is closed in
+`MainFrame_Disposed`, and the viewer has a "Show log file" button.
+
+### 2026-09-08 — RedGifs: no reactive token refresh (`438e2af`)
 
 Same log: 38 users plus 3 gif lookups all returned 401. `UpdateTokenIfRequired` only refreshes once
 `TokenUpdateInterval` minutes have elapsed, so a token RedGifs invalidates *early* leaves every request
@@ -201,7 +232,7 @@ so the recency check is what actually prevents the stampede). Wired into `UserDa
 `GetDataFromUrlId` (also used by Reddit to resolve RedGifs links). **Exactly one retry per user per run**
 (`_TokenRetried`, reset in `DownloadDataF`) — a second 401 is a real failure and is logged as such.
 
-### 2026-11-07 — Instagram: an hour per profile in the file-name regex (my de-dup, Sept)
+### 2026-11-07 — Instagram: an hour per profile in the file-name regex (my de-dup, Sept) (`69439fc`)
 
 Symptom: the run "stalled" on Instagram. The activity log had stopped 33 minutes earlier, right after
 `piercednoodles`' scan, while one thread sat at 100% CPU. **Diagnosed live, without touching the process**:
@@ -464,9 +495,10 @@ the previous release. Built clean, deployed (backup `D:\Utilities\SCrawler-backu
   copy-every-field `SetView` bodies collapse into one shared `RedditViewExchange.SetView`. Checked: the
   site-level exchange object takes the base default `UserExists = True`, so creating a user through this
   form doesn't mark it missing.
-- PornHub subscriptions load photos (yt-dlp is no longer forced for subscription items). Tom has no PornHub users.
+- PornHub subscriptions load photos (yt-dlp is no longer forced for subscription items). This install has
+  no PornHub users.
 
-**The built-in updater had installed vanilla 2026.11.8.0 minutes before the merge** (Tom noticed at once;
+**The built-in updater had installed vanilla 2026.11.8.0 minutes before the merge** (the user noticed at once;
 no fork types in the exe, never run). **The exe's 2026-11-08 timestamp is the release's build time,
 carried over from the zip, not the install time.** The install moment shows on files the updater creates
 fresh (here `Environment\cURL\`, stamped at the install). Backup:
@@ -488,7 +520,7 @@ activity log by `ReportRedGifsCreators` (skips accounts already in `Settings.Use
 Reddit user's collection name when it has one). **Zero extra requests.** Deliberately reporting-only:
 a RedGifs link does NOT prove the Reddit poster owns the account (crossposts/reposts name other
 creators), so counts are shown and the user decides. Only covers posts processed this run (i.e. new
-posts), so the picture builds up over time rather than cataloguing the backlog at once.
+posts), so the picture builds up over time rather than cataloging the backlog at once.
 
 **Step 1b — auto-add UI: DONE** (commit `c99f007`). `Download\RedGifsDiscovery.vb` (persistent store,
 `Settings\RedGifsDiscoveries.xml`, keyed on RedGifs account + Reddit user, with a Dismissed flag) and
@@ -505,8 +537,23 @@ Accept path: `CreateRedGifsUser` mirrors `BTT_ADD_USER_Click`'s add sequence, th
 what the profile list shows) and the Reddit user itself otherwise — so joining and creating both work
 through SCrawler's own code, folder moves and usage-model prompts included. Enablers added to
 MainFrame: `SelectUsers(Keys)` and the context-menu body promoted to `Friend Sub
-AddSelectedUsersToCollection`. **Not yet exercised at runtime** — the dialog compiles but the
-click-through (create + collection prompts) has not been driven; try one suggestion first.
+AddSelectedUsersToCollection`.
+
+Two refinements after real use:
+- **`c53194a`, chooser context.** Accepting several suggestions at once gave a run of identical "which
+  collection?" prompts with nothing to say which pair each was for. `CollectionEditorForm` gained two
+  optional properties: `MyContext` (appended to the title bar) and `MySuggestedCollection` (preselects a
+  name, adding it to the list if new; `MyCollection` only preselects existing names). Both are ignored
+  when empty, so every existing caller is unchanged. The reviewer titles each prompt
+  `"<n> of <total>: <reddit> + <redgifs>"`.
+- **`b053882`, auto-named collections (supersedes the chooser on this path).** Accepting removed the
+  suggestion from the list and *then* asked for a collection name, by which point the Reddit user it
+  should be named after was off screen. The pairing is already decided by accepting, so a new
+  collection is now named after the Reddit user with no prompt (`AddSelectedUsersToCollection` gains
+  `Optional ForcedCollectionName`; the name goes through `StringRemoveWinForbiddenSymbols`, since it
+  becomes a folder). An existing collection among the selected users still wins, and the chooser remains
+  the fallback. Store cleanup (`Forget`) moved to after the collection step. SCrawler's own usage-model
+  prompt can still appear for a new collection: that is its folder-move decision, left in place.
 
 *(Original design notes, retained — the findings still apply.)* User decisions (2026-08-15): **full auto** (create the
 RedGifs user, join the Reddit user's existing collection, and create a NEW collection when the Reddit
@@ -545,10 +592,12 @@ hashing of large files: RedGifs stores it as `Post.ID` (both the timeline path v
 `RedGifs.UserData.GetVideoIdFromUrl` recovers it. ID comparison is `OrdinalIgnoreCase` because the two
 paths differ in casing.
 
-Design points: runs from `TDownloader.StartDownloading` **after the job's `Do While` completes**, because
+Design points: runs from `TDownloader.JobsChecker` **after every job in the pool has drained**, because
 `UserDataBind.DownloadData` does not run its members — it expands them into the downloader queue
 (`Downloader.AddRange(Collections, True)`), so there is no in-collection completion hook and member
-order is not guaranteed. Only `UStates.Downloaded` items are eligible (a Missing record has no file and
+order is not guaranteed. *(It first ran at the end of `StartDownloading`, but that is per job, and jobs
+run on parallel threads: it fired when the first job drained, with, say, the RedGifs users done and the
+Reddit users still downloading in another job. Moved in `4d90766`.)* Only `UStates.Downloaded` items are eligible (a Missing record has no file and
 must keep its retry budget). Files go to the **recycle bin**, never permanent delete. Every removal is
 reported to the activity log. Skipped on cancel/error — it just runs after the next completed job.
 New generic helpers on `UserDataBase`: `ContentSnapshot()` and `RemoveContentAndRecycleFiles(Match)`
@@ -687,7 +736,7 @@ Notes (no action, for awareness):
   the `p.Type = v2` conditions are dead code (m3u8 items download via `DownloadM3U8` anyway).
 - Reddit `ReparseVideo` ~1083: when the reparse fetch fails (empty response), the slot keeps an empty
   `New UserMedia` (Type=Undefined, URL="") instead of being removed — relies on downstream skipping
-  empty URLs. Upstream behaviour, left alone.
+  empty URLs. Upstream behavior, left alone.
 - Reddit `DownloadDataChannel` catch ~616: `ElseIf errValue = 429 And round = 0` can never be true
   (round is incremented before the Try) — dead branch; also DownloadingException throws on 429 rather
   than returning it. Left alone.
@@ -889,11 +938,160 @@ FeedFilter.Sites picker-only (behavior changes = feature decisions, not bugs); T
 (don't unify); UserMedia.GetHashCode mutability (no observed harm); Instagram ObtainMedia gallery
 State/Attempts drop (latent — guarded against in the 5.5 implementation, noted there).
 
-Pre-ledger work (earlier sessions, already committed to fork):
-- `Download\NetworkBreaker.vb` — new DNS-failure circuit breaker (written by Claude, reviewed).
-- `TDownloader.vb` — breaker integration + observability logging (partial review only; full review due in chunk 1).
-- `API\Base\UserDataBase.vb` — `SafeGetResponse` added (partial review only; full review due in chunk 1).
-- Site fixes applied: Reddit (ParseContainer ext fallback, MediaFromData guard), Instagram/Redgifs (SafeGetResponse), Mastodon/OnlyFans/ThreadsNet/Twitter (ReparseMissing existence probes + early-exit). These were targeted fixes, not full module reviews.
+## Pre-ledger fixes (2026-05 → 2026-06-23)
+
+Before this ledger existed, fixes were made one at a time from live log errors (run → error → trace →
+fix → deploy) and tracked as numbered bugs in session notes. They reached git together on 2026-06-23:
+
+| Commit | Contents |
+|---|---|
+| `bbe41e3` | Build: PersonalUtilities source references → `lib/*.dll`; `BugReporterForm` made `Partial` |
+| `c3cdd84` | Bug 11 (`NetworkBreaker`), plus TDownloader logging for services skipped or removed from a run |
+| `70fbb97` | Bugs 1–10, 12, Bug 13's Reddit/RedGifs parts, and the 2026-06-13 review pass |
+| `87980b8` | Bug 13's existence checks for Mastodon, OnlyFans, ThreadsNet and Twitter |
+| `802a605` | `[Jobs N]` → `[N left]` label (the commit message also describes the skip logging, which is in `c3cdd84`) |
+
+Numbering is historical (order of discovery), so it is not sequential below.
+
+**Bug 1, Reddit: "Collection was modified" in `Responser.Decoders`.** `DownloadDataF` added the HTML
+decoder to a list another thread could be enumerating. Wrapped the contains-then-add in a Try.
+
+**Bug 2, Reddit: NullRef in `GetResponse` on crosspost lookup.** With no media and no crosspost parent, all
+three crosspost ID fields are empty, so `tPostId = ""` and the code requested
+`https://www.reddit.com/comments//.json`, which NullRefs inside Responser before its error handling runs. The
+guard checked `PostID` but not `tPostId`; now checks both. (The error is logged against the *pagination* URL,
+because the outer catch uses the loop's URL variable.)
+
+**Bug 3, Reddit: NullRef in `GetResponse` on pagination.** Any HTTP-level failure on page N+1 NullRefs inside
+PersonalUtilities (see *PersonalUtilities Hazards*, `_ErrorProcessor`). Caught locally and treated as an empty
+response; later consolidated into `SafeGetResponse`.
+
+**Bug 4, `DownloadContentDefault`: dispose-during-download race.** The loop indexes `_ContentNew`, and
+`Dispose()` on another thread clears it. The existing guard caught `IndexOutOfRangeException` (arrays), but a
+`List(Of T)` throws `ArgumentOutOfRangeException`, so the race was logged as an error. Added
+`Catch … ArgumentOutOfRangeException When Disposed`.
+
+**Bug 5, RedGifs: silent "no downloads".** Four causes stacked: `UpdateTokenIfRequired` was only called from
+`Available()` (the Channels form), never on the normal download path, so an expired token 401'd every
+request; the user's `Responser` copy was made before any refresh, so a refreshed token had to be re-synced into
+its headers; an empty response skipped the whole body with no log; and reaching an already-known post exited
+silently. Now refreshes before downloading, re-syncs the header, catches the NullRef, and logs both the
+empty-response and the caught-up cases.
+
+**Bug 6, Reddit + Instagram: silent empty responses.** Reddit `DownloadDataUser` had no `Else` for "empty and
+not a 429 retry", `DownloadDataChannel` had neither the NullRef guard nor the log, and Instagram threw
+`ExitException` silently. All three now log the HTTP status.
+
+**Bug 7, RedGifs: HTTP 405 from a backslash in a stored post ID.** `MediaFromData` stripped `\` from the URL but
+not from `PostID`, so a corrupted ID was persisted and `ReparseMissing` built
+`…/gifs/<id>%5c?views=yes…`. Stripped on the way in and defensively when reading. Extended 2026-06-01: the
+ID regexes also pass a *percent-encoded* `%5c`, so both sites now `Uri.UnescapeDataString` the ID before
+stripping.
+
+**Bug 8, Instagram: false "user not found" after an auth failure.** `GetUserData`'s `Catch ex As Exception`
+intercepted Instagram's own `ExitException` (thrown when token validation fails), set `UserExists = False`
+and rethrew as "user not found on site". Added `Catch eex As ExitException : Throw` ahead of it.
+
+**Bug 9, Reddit `ReparseMissing`: out-of-range, NullRef and a disposal race.** `GetNode(SingleJsonNodes)`
+throws out-of-range on deleted posts (JIT inlining hides the frame), which aborted the loop and made the
+Finally remove stale `rList` indices, a second error. Also `_TempMediaList(i)` for `(li)` in an inner loop
+(fixed upstream independently in 2026.8.7.0), and `Dispose()` on another thread clearing `_ContentList`
+mid-loop. Now a per-item Try around the JSON work, a per-iteration Try that exits quietly when `Disposed`, and
+a bounds check in the Finally.
+
+**Bug 10, main list: landscape thumbnails stretched.** `ListImagesLoader` uses a fixed portrait cell
+(`width = height × 0.75`) and the ImageList stretches whatever it is given. New `PadImageToCell` scales
+uniformly into the same cell dimensions and centers on white.
+
+**Bug 11, a DNS storm flooded the log.** With the connection saturated, every API call failed name
+resolution, and the queue burned through every user in guaranteed-failure batches. New `NetworkBreaker`: 5
+DNS failures within 15 s trips it, sets `Downloader.Suspended`, and probes every 30 s for up to 15 min. The
+hook is `UserDataBase.ProcessException` → `IsDnsFailure` (walks the exception chain for
+`WebException.Status = NameResolutionFailure`), the one point common to every site. `Interlocked` on the
+tripped flag so each transition logs once. Users processed before it trips are lost for that run (a handful
+at batch sizes of 2–3).
+
+**Bug 12, Reddit: Missing posts retried forever with dead CDN URLs.** Reddit's `s=` signature is derived from
+the image path alone, so re-fetching a post returns a byte-identical URL and cannot revive a dead CDN entry.
+Three fixes: `MediaFromData` rewrites `preview.redd.it` to the unsigned, permanent `i.redd.it` for *all*
+types (previously only video); `ParseContainer` tries the post's original source URL (a non-Reddit host with a
+recognizable extension) before the signed `external-preview` proxy; and `ReparseMissing` got the
+`MaxReparseMissingAttempts = 10` give-up budget, counting both its own failures and
+`DownloadContentDefault`'s, persisted in `Attempts`. The post ID stays in the posts file, so a given-up item
+is not re-discovered.
+
+**Bug 13, "Download missing posts" never learned that an account was gone.** That mode skips `DownloadDataF`,
+the request that normally sets `UserExists = False`, so the existing "account gone → drop its Missing items"
+branches never fired. Part 1 added one cheap existence check up front: Reddit `about.json`, RedGifs
+`/v2/users/{name}`, Mastodon's account lookup, OnlyFans `GetUserID()` (on copied cookies, since `CCookie`
+may be `Nothing`), and ThreadsNet's existing per-item loop now exits once "not found" arrives. Twitter only got
+the early-exit guard, since its check is gallery-dl based and couldn't be tested. **Part 2, a user correction:**
+for Reddit the bulk removal is wrong, because a post outlives the account that made it and stays reachable
+through `comments/{id}.json`. Reddit's bulk removal was deleted (the probe still feeds `UserExists` for the UI
+and `NonExistingUsers.txt`). Instead, a re-fetched post whose `removed_by_category` is set (`deleted`,
+`moderator`, `reddit`, …) is dropped at once, bypassing the 10-attempt budget. `author == "[deleted]"` is
+deliberately *not* a signal, since it describes the account and not the post. The other sites keep bulk
+removal, because it is their only give-up mechanism. (Mastodon support was later removed upstream, in
+2026.9.21.0.) Verified in production on 2026-06-10: ~440 posts
+classified by `removed_by_category`, and the bulk path never fired. Part 3: Instagram's rate-limit wait and
+self-throttle now say they are pausing.
+
+**2026-06-13 review pass over all of the above** (in `70fbb97`):
+- The NullRef workaround was copy-pasted four times; now one `SafeGetResponse(Resp, URL)`. Single-argument on
+  purpose: callers passing their own `ErrorsDescriber` already suppress the throw, and the struct can't be
+  defaulted to `Nothing`.
+- Bug 12's source-URL fallback typed everything as Picture; now typed by extension (`.gif` → GIF,
+  `.mp4/.webm/.mov/.m4v` → Video), as the author's own `source.url` case does.
+- The `MediaFromData` guard had used `IsNot Nothing` on an `SFile`, which is a struct (`BC31419`); the real
+  edge was an empty file name, so the guard is `Not m.File.IsEmptyString`.
+- `NetworkBreaker.WaitForConnectivity` probes *before* its first sleep (a false trip recovers at once) and
+  calls `ResetSilent()` on timeout so the tripped state doesn't outlive the run.
+- Confirmed non-issues: `_ForceSaveUserData` is a real pre-existing field; keeping bulk removal for the
+  non-Reddit sites is correct; `removed_by_category` on live text posts is moot (they never become Missing).
+
+## Recurring patterns in this codebase
+
+What to look for when reading or diagnosing it:
+
+- **The adjacent variable goes unchecked.** A guard validates the obvious input and skips its neighbor
+  (Bug 2's `PostID`/`tPostId`), and a fan-out list handles every entry but one (chunk 5's
+  `BTT_FEED_ADD_SPEC_REMOVE`, upstream's own `BTT_LOAD_T`). When one of two similar names is checked, ask
+  about the other.
+- **"Downloaded nothing, no error" is usually an empty response.** The common shape is
+  `Dim r$ = Responser.GetResponse(URL)` → `If Not r.IsEmptyString Then … End If` with no `Else`, so a 401,
+  404, network error or the PersonalUtilities NullRef all read as success. Check, in order: is the token
+  refreshed on the download path (`DownloadDataF`), not only in `Available()`? Is the user simply caught up?
+  What was `Responser.StatusCode`? Fixed for Reddit, RedGifs and Instagram. Still present, unused here:
+  Bluesky (`If UpdateToken()` skips silently), Xhamster, LPSG's main path, PornHub's empty path, and
+  XVIDEOS' `DownloadUserVideo` (its playlist code checks `HasError`). Twitter and Pinterest go through
+  gallery-dl and fail differently.
+- **Two exception types for "index out of range".** Arrays throw `IndexOutOfRangeException`, `List(Of T)`
+  throws `ArgumentOutOfRangeException`. They share no base below `SystemException`, so a disposal guard
+  needs both (Bug 4).
+- **Errors are swallowed broadly.** Empty catches and `EDP` defaults hide failures. When adding a path,
+  log it.
+- **Long recursive methods.** Reddit `DownloadDataUser` paginates by recursion; `ParseContainer` is long
+  and deeply nested. Trace carefully.
+
+## Diagnosis recipes
+
+- **A "stalled" run, read-only.** Sample per-thread CPU time twice to find the hot thread; its start module
+  (`NtQueryInformationThread`, class 9) says whether it is managed (`clr.dll`). Then take managed stacks with
+  **ClrMD 3.x** (`microsoft.diagnostics.runtime` 3.1.512801 from nuget.org; 4.x pulls in Azure.Core) using
+  `DataTarget.CreateSnapshotAndAttach(pid)`, which snapshots instead of suspending the process. This is how
+  the 2026-11-07 regex cost was found while the run continued.
+- **Persistent vs one-off download failures across logs.** Strip the query string from the failing URLs and
+  compare base paths across runs; compare the `s=` signature too, to see whether the same URL is retried
+  verbatim. The same item failing in 3+ runs is stuck, not a transient expired link (this led to Bug 12).
+  Use PowerShell: WSL can't see `D:\` here.
+- **Instagram: what was a section's history?** The `Section` attribute in
+  `Settings\User_Instagram_<name>_Posts_KV.xml` (`Timeline = 0`, `Reels = 1`, …) shows what each section has
+  ever recorded. Zero timeline records next to non-zero reels is what exposed the reel-masks-timeline bug.
+- **Recovering site options that something switched off:** `Responser_Instagram_Settings.xml` keeps `_Def`
+  values beside the current ones, which preserved the intended Instagram options after `DisableSection`
+  zeroed them (2026-09-08).
+- **Which build is deployed:** search the exe for a fork-only *type* name (see *2026.9.21.0*). The file
+  version can't tell, and the file's timestamp is the release's build time, not when it was installed.
 
 ## Fixes applied
 
@@ -981,7 +1179,22 @@ Pre-ledger work (earlier sessions, already committed to fork):
 
 ## PersonalUtilities Hazards (closed-source, work around only)
 
-- `Responser._ErrorProcessor` is left uninitialised → its own catch block throws NullReferenceException on HTTP-level errors. Workaround: `SafeGetResponse` in `UserDataBase.vb`.
+- `Responser._ErrorProcessor` is left uninitialized → its own catch block throws NullReferenceException on HTTP-level errors. Workaround: `SafeGetResponse` in `UserDataBase.vb`.
+  The field is `Private` and its setter `Protected`, so it can't be initialized from outside.
+  `EDP.ReturnValue` does *not* protect against it, and neither does a malformed or empty URL
+  (`comments//.json`), which NullRefs during request setup, before any error handling.
+- **`Responser` basics.** Each `SiteSettings` owns one; each user download takes `Responser.Copy(HOST.Responser)`,
+  so a header a site refreshes later (a token) has to be copied into the user's copy by hand (Bug 5).
+  `GetResponse(UrlObject, Optional PayLoad, Optional ErrorsDescriber)`; `DeclaredError` sets the behavior on
+  HTTP errors; `ProcessExceptionDecision` is the hook Reddit uses for 429 handling. `Decoders` is a shared
+  `List(Of SymbolsConverter.Converters)`; mutating it raced with enumeration (Bug 1).
+- `ErrorsDescriber` is a **struct** (never `Nothing`); `EDP` holds the common values (`ThrowException`,
+  `ReturnValue`, `SendToLog`, `None`).
+- `UrlObject` stores only the `URL` string; its `URI` field stays `Nothing` after construction. Implicit
+  conversion from `String`.
+- `RegexReplace` evaluates `MatchCollection.Count`, i.e. every match, not just the first, which is what made a
+  backtracking pattern cost seconds per URL (2026-11-07 entry). **Time anything regex-heavy under .NET
+  Framework 4.8 (Windows PowerShell 5.1), not modern .NET**, which is orders of magnitude faster here.
 - **`MsgBoxE` closed with the title-bar X returns `Index = -1` with `DialogResult = OK`** (verified on the
   real dialog). Only the index says it was dismissed. Never convert `.Index` straight to Boolean
   (−1 → True), and give `Select Case` on the result a `Case Else` that cancels. `result = n` compares `Index`.

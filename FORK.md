@@ -137,8 +137,8 @@ often will not compile against older DLLs — the 2026.8.7.0 merge failed with a
 are current, though (2026.9.21.0 compiled against the old ones), so check by content:
 
 ```powershell
-py -3 Tools\release_dlls.py 2026.9.21.0             # compare lib\ with the release
-py -3 Tools\release_dlls.py 2026.9.21.0 --extract   # write the release's DLLs into lib\
+py -3 Tools\release_dlls.py <tag>             # compare lib\ with the release, e.g. 2026.11.8.0
+py -3 Tools\release_dlls.py <tag> --extract   # write the release's DLLs into lib\
 ```
 
 It reads only the release zip's index and the three DLLs (a few MB, not the whole bundle) and verifies
@@ -147,7 +147,9 @@ each file's CRC. Rebuild afterwards, and when deploying, ship the refreshed DLLs
 
 **SCrawler's built-in updater installs vanilla upstream.** Accepting its update prompt replaces this
 fork's binaries with the official release. That makes the prompt a handy "a new release is out" signal,
-but the install stays vanilla until the merged build is deployed again.
+but the install stays vanilla until the merged build is deployed again. The file version can't tell the
+two apart (both carry the release number), and neither can the file date, which is the release's build
+time. To check, search the exe for a type name only this fork has, such as `CrossAccountDedup`.
 
 Merge history is recorded in [REVIEW.md](REVIEW.md) under *Upstream merges*, including the
 conflict-resolution details for each release.
